@@ -1,6 +1,6 @@
 # Ray 任务
 
-适用于 Ray 分布式作业。先确认镜像含匹配 Ray 版本，配置 HeadSpec/WorkerGroups、挂载和 Entrypoint，dry-run 后创建。示例配置在仓库 examples/ray.json；其中资源名称为占位符。
+适用于 Ray 分布式作业。先确认镜像含匹配 Ray 版本，配置 HeadSpec/WorkerGroups、挂载和 Entrypoint，dry-run 后创建。按需复制 [ray.json](../assets/examples/ray.json) 或 [workers.json](../assets/examples/workers.json) 到用户项目，替换其中占位符。
 
 ```bash
 yicloud api describe ray CreateRayJob
@@ -21,4 +21,4 @@ ray 资源直接用操作参数 JobName；列表的对应字段是 `RayJobName`�
 
 失败时先看 events、instances 和日志；stop/delete 没有对应 start，重新提交需要新的创建请求。wait 以任务 Status 成功终态为准，RayClusterStatus=Running 不能证明作业成功。
 
-来源：[创建 Ray 任务](https://docs.yicloud.com/4/1/1/3/1.html)、[SDK ray](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services/ray)。核对日期 2026-10-19；历史日志实际响应形状未验证。
+来源：[创建 Ray 任务](https://docs.yicloud.com/4/1/1/3/1.html)、[SDK ray](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services/ray)。

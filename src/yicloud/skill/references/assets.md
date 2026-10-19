@@ -20,4 +20,4 @@ repositories.json：`{"ZoneId":"example-zone"}`；model-versions.json：`{"Proje
 
 可选 YICLOUD.md 记录固定镜像标签或摘要、模型版本、数据集版本、源路径、挂载点、消费者和清理条件；不记动态访问 Token 或临时下载 URL。
 
-来源：[官方资产中心入口](https://docs.yicloud.com/)、[SDK registry/modelrepo/dataset](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services)。核对日期 2026-10-19；资产管理尚未联机验证。
+来源：[官方资产中心入口](https://docs.yicloud.com/)、[SDK registry/modelrepo/dataset](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services)。

@@ -16,7 +16,7 @@ from .commands.workloads import register_workloads
 @click.option("--region", help="Region ID.")
 @click.option("--json", "json_output", is_flag=True, help="Fixed JSON envelope.")
 @click.option("--show-secrets", is_flag=True, help="Explicitly reveal newly returned API secrets.")
-@click.version_option("0.1.0")
+@click.version_option(package_name="yicloud-skill")
 @click.pass_context
 def main(ctx, alias, host, region, json_output, show_secrets):
     """Yicloud CLI. API fields are case sensitive; see the skill for validation scope."""

@@ -344,7 +344,7 @@ def test_scope_override_rejected_before_name_lookup(monkeypatch):
     result = CliRunner().invoke(
         main,
         [
-            "job",
+            "ray",
             "stop",
             "name",
             "--by-name",
@@ -398,7 +398,14 @@ def test_interrupted_write_does_not_claim_remote_resource_is_unchanged(monkeypat
     result = CliRunner().invoke(
         main,
         (["--json"] if json_output else [])
-        + ["api", "call", "workspace", "CreateWorkspace", "--file", "examples/workspace.json"],
+        + [
+            "api",
+            "call",
+            "workspace",
+            "CreateWorkspace",
+            "--file",
+            "src/yicloud/skill/assets/examples/workspace.json",
+        ],
     )
     assert received == ["POST"] and result.exit_code == 130
     assert "remote writes may have completed" in result.output

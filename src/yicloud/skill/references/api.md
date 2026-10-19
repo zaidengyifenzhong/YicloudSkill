@@ -1,36 +1,27 @@
-# 通用 API 与维护
+# 通用 API
 
-适用于便利命令未覆盖的接口、复杂嵌套输入和 SDK 更新。先 list/describe，使用官方字段准备 JSON，dry-run，再执行并查询实际状态。
+用于便利命令未覆盖的接口和复杂请求。已知操作直接 describe；未知操作先限定服务查找：
 
 ```bash
-yicloud api list
 yicloud api list --service job
 yicloud api describe job CreateJob
-yicloud --account research api call job CreateJob --file job.json --dry-run
-yicloud --account research --json api call job CreateJob --file job.json
+yicloud api call job CreateJob --file job.json --dry-run
+yicloud --json api call job CreateJob --file job.json
 ```
 
-`--file -` 从 stdin 读取 JSON 对象，无请求字段可省略文件。JSON 请求体保留缺失、false、0、空字符串和 null 的区别；GET 查询把 null 编码为空值，与空字符串合并，省略字段则不发送该键。固定 SDK 的 nil 指针会省略，服务端 nullable 查询行为尚未联机验证。检查 SDK binding 的 required、oneof、嵌套类型及 SDK 常量枚举；部分必填业务条件只在 SDK 注释中出现，需结合描述和官方文档判断。仅在明确需要服务端新增字段时使用 `--allow-unknown-fields`，不会开放任意 URL。
+描述包含当前请求的 schema 及其引用类型。字段大小写、必填和枚举以描述为准；部分业务条件由服务端校验。`--file -` 从 stdin 读取 JSON 对象，无字段请求可省略文件。只有明确需要服务端新增字段时才用 `--allow-unknown-fields`。
 
-dry-run 只做本地校验并输出方法、URL、查询字段和请求体，既不验证平台权限，也不保留容量。写请求不会自动重试；只读调用最多附加重试两次。JSON 保留平台数据，错误区分 configuration/input/authentication/network/platform/unsupported_protocol；`--json` 本地取消为 interrupted、退出 130，保守标记结果未知。错误含 request_id 和 outcome_unknown。TLS 正常校验，重定向不自动跟随。文件响应必须 --output，完成后原子替换。
+通用 API 的 dry-run 校验并预览请求，不联网、不验证权限、不预留资源。便利命令的 `--by-name --dry-run` 会先进行只读名称查询。JSON 请求体区分缺失、false、0、空字符串和 null；GET 的 null 编码为空值，省略字段则不发送。文件响应需 `--output PATH`，完成后原子替换目标。
 
-基准：[官方 Go SDK v0.5.1](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5)，提交 `8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5`，文档核对 2026-10-19。227 个公开请求操作全部收录，225 个普通 HTTP 操作实现，2 个协议暂缓（GetInferSetTerminal、GetInferSetLogsTail）。帮助中的 implemented-offline 描述实现及离线覆盖，不表示每项都经过联机验证；已实测的部分只读接口见下文，平台写操作未联测。
+`--json` 成功输出 `{"ok":true,"data":...,"meta":...}`；失败信封写入 stderr，含错误类型、request_id 和 outcome_unknown。普通模式输出可读错误。写请求不自动重试；网络错误或中断导致结果未知时先核验远端状态。Ctrl-C 返回 130，只停止本地进程。认证与秘密输出见 [accounts.md](accounts.md)。
 
-已知差异：fs/alpha 的真实产品、路径与直接响应需单独处理；Ray 历史日志 SDK 未定义数据类型，保留直接 JSON；部署日志下载 SDK 使用 Empty，客户端按文件保存；标量数组统一为重复查询键，避免 SDK 编码丢失数组元素。重复键的签名排序与官方算法一致，但服务端数组兼容性仅离线验证。对象上传下载另接 S3 工具，浏览器终端不模拟为成功。
+225 个 HTTP 操作已实现；GetInferSetTerminal 和 GetInferSetLogsTail 暂不支持。日志跟随使用历史日志轮询，SSH 使用实际网关连接。`implemented-offline` 表示实现与离线覆盖，不代表真实平台验证。只有审计覆盖范围时才查 [支持矩阵](support.md)。
 
-2026-10-19 在 macOS / arm64、`.com.cn` 网关实测 HMAC 认证及以下只读调用：mc 的 ListZones、ListProjects、ListSKUs、ListQuotaGroups、GetProjectQuota；workspace 的 GetWorkspace、ListWorkspaces；job 的 ListJobs；ray 的 ListRayJobs；inferset 的 ListInferSet。空列表响应只验证接口调用和空值解析，不证明有可用资源。没有执行创建、启停、删除或管理员写操作。
+已知平台差异：
 
-本次实测观察到 ListInferSet 在平台 Data 信封内使用 `{"Data":[],"Total":0}`，便利命令的分页读取已兼容该列表字段。固定 SDK 的别名响应另使用 `GetInferSetLogsQueryRangeData`，也已兼容并离线验证；这不证明真实平台非空列表一定使用该键。Ray 列表的 `Namespace/DisplayName/RayJobName` 和部署列表的 `Namespace/Name/ID` 按各自合同映射到按名定位，不把 Ray 的 UUID `Id` 作为操作 `JobName`。
+- 开发机列表可能为空而按已知 ID 查询详情成功。空列表不能证明资源不存在；按 ID 核验，名称查找受列表可见范围限制。
+- 文件存储 `fs/alpha` 使用 yifs 路径和直接响应，详见 [storage.md](storage.md)。
+- Ray 日志保留平台 JSON；不识别的跟随响应会报错，可用单次通用查询检查。
+- 标量数组以重复查询键发送；实际服务端数组兼容性尚未联测。
 
-同日独立合同对照确认：在相同身份、网关、地域、项目、可用区和标量请求参数下，Python 与固定 Go SDK 的 ListWorkspaces 均返回 HTTP 200、Code 0、空列表，而已知 ID 的 GetWorkspace 均返回 Running。显式添加 RegionId 仍复现；移除数组过滤亦不改变现象。未发现 Python 特有差异能够解释它，服务端原因尚未确定。不可据空列表判定已知资源不存在，按 ID 详情核验；名称解析仍受列表可见范围限制。固定 Go SDK 会丢弃 WorkspaceId 的 `[]any` 过滤，Python 保留重复键；这项已知编码偏离并不能解释无数组条件下的空列表。
-
-API 地址按控制台环境显式选择：`console.yicloud.com` → `https://gate.yicloud.com`，`console.yicloud.com.cn` → `https://gate.yicloud.com.cn`，依据[官方域名说明](https://docs.yicloud.com/8/1.html)。错误返回保留脱敏后的 Msg、业务 Code、HTTP 状态和请求 ID；不要输出认证头或签名来排错。
-
-维护者需要 Go（用户运行不需要）：从固定提交干净检出后，在仓库根目录执行：
-
-```bash
-go run tools/catalog.go /path/to/openapi-sdk-go > catalog.next.json
-python tools/check_catalog.py catalog.next.json
-```
-
-生成器用 Go 标准库 AST 解析真实 client.Get/Post/GetRaw、路径表达式、请求模型、JSON/form/binding 标签和常量；拒绝非固定提交、已修改 SDK、无法解析路径/类型/公开操作。特殊响应覆盖在生成器中显式标注；无 binding 标签的明确枚举由 tools/catalog_overrides.json 补齐，并记录 SDK 注释出处。检查 diff 后替换 src/yicloud/data/catalog.json，并用 `python tools/render_support.py` 更新支持矩阵；运行 pytest、Ruff、Skill 验证和 wheel 安装检查。更新基准时同时调整版本、SHA、来源、测试和差异说明，不能只改目录的头部版本号。
+基准为官方 Go SDK v0.5.1，固定提交 `8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5`。已实测 `.com.cn` HMAC、部分只读 API 和 Mac SSH/SFTP；平台写操作、Token 与服务账号认证尚未联测。

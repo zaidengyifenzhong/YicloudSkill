@@ -24,4 +24,4 @@ aws --endpoint-url "$YICLOUD_S3_ENDPOINT" s3 cp s3://example-bucket/output/resul
 
 该命令依赖另行安装 AWS CLI 并按官方资料配置 S3 访问凭据。SDK 没有对象上传下载操作，CLI 不另造上传接口。
 
-来源：[文件存储](https://docs.yicloud.com/4/3/1/2.html)、[对象存储](https://docs.yicloud.com/4/3/1/3.html)、[SDK services](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services)。核对日期 2026-10-19；S3 连接和传输未验证。
+来源：[文件存储](https://docs.yicloud.com/4/3/1/2.html)、[对象存储](https://docs.yicloud.com/4/3/1/3.html)、[SDK services](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services)。

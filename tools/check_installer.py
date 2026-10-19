@@ -13,10 +13,15 @@ import tempfile
 from pathlib import Path
 
 p = argparse.ArgumentParser()
-p.add_argument("wheel", type=Path)
+p.add_argument("wheel", type=Path, help="Wheel file or directory containing one project wheel.")
 p.add_argument("--wheelhouse", type=Path, required=True)
 p.add_argument("--manager", choices=["uv", "pipx"], default="uv")
 args = p.parse_args()
+if args.wheel.is_dir():
+    wheels = sorted(args.wheel.glob("yicloud_skill-*.whl"))
+    if len(wheels) != 1:
+        p.error("Expected exactly one yicloud-skill wheel; pass a specific wheel file")
+    args.wheel = wheels[0]
 repo = Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory(prefix="yicloud-installer-") as directory:
     scratch = Path(directory)

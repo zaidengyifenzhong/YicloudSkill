@@ -6,15 +6,21 @@ Optional --wheelhouse DIR keeps dependency installation offline after pip downlo
 import argparse
 import json
 import os
+import re
 import subprocess
 import tempfile
 import venv
 from pathlib import Path
 
 p = argparse.ArgumentParser()
-p.add_argument("wheel", type=Path)
+p.add_argument("wheel", type=Path, help="Wheel file or directory containing one project wheel.")
 p.add_argument("--wheelhouse", type=Path)
 args = p.parse_args()
+if args.wheel.is_dir():
+    wheels = sorted(args.wheel.glob("yicloud_skill-*.whl"))
+    if len(wheels) != 1:
+        p.error("Expected exactly one yicloud-skill wheel; pass a specific wheel file")
+    args.wheel = wheels[0]
 wheel = args.wheel.resolve()
 with tempfile.TemporaryDirectory(prefix="yicloud-wheel-") as scratch:
     root = Path(scratch)
@@ -102,7 +108,31 @@ with tempfile.TemporaryDirectory(prefix="yicloud-wheel-") as scratch:
     skill = root / "installed-skill"
     call("--json", "skill", "install", "--target", "codex", "--path", str(skill))
     assert (skill / "SKILL.md").is_file()
-    assert len(list((skill / "references").glob("*.md"))) == 13
+    # Templates must work without a source checkout or user account.
+    for kind in ("workspace", "job", "ray", "serving"):
+        template = skill / "assets" / "examples" / f"{kind}.json"
+        request = call("--json", kind, "create", "--file", str(template), "--dry-run")["data"]
+        assert request["validation"] == "passed"
+    workers = skill / "assets" / "examples" / "workers.json"
+    request = call(
+        "--json",
+        "ray",
+        "workers",
+        "fixture",
+        "--project",
+        "fixture-project",
+        "--zone",
+        "fixture-zone",
+        "--file",
+        str(workers),
+        "--dry-run",
+    )["data"]
+    assert request["validation"] == "passed"
+    # Validate links after installation, rather than relying on a reference file count.
+    for document in skill.rglob("*.md"):
+        for target in re.findall(r"\]\(([^)]+)\)", document.read_text(encoding="utf-8")):
+            if "://" not in target and not target.startswith("#"):
+                assert (document.parent / target.split("#")[0]).exists(), (document, target)
     call("--json", "skill", "uninstall", "--target", "codex", "--path", str(skill))
     assert not skill.exists()
     assert not (root / "config.json").exists()

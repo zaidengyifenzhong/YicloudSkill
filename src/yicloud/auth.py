@@ -1,9 +1,12 @@
 import base64
 import hashlib
 import hmac
+from importlib.metadata import version
 from urllib.parse import parse_qsl
 
 from .errors import AuthenticationError
+
+PACKAGE_VERSION = version("yicloud-skill")
 
 
 def sign(timestamp, public_key, secret_key, query, body):
@@ -16,7 +19,7 @@ def sign(timestamp, public_key, secret_key, query, body):
 def headers(account, timestamp, query, body):
     result = {
         "Content-Type": "application/json",
-        "User-Agent": "yicloud-skill/0.1.0",
+        "User-Agent": f"yicloud-skill/{PACKAGE_VERSION}",
         "X-OGW-REGION-ID": account.region,
     }
     if account.token:

@@ -15,6 +15,20 @@ class Root(click.Group):
     def main(self, *args, **kwargs):
         standalone = kwargs.pop("standalone_mode", True)
         self.active_context = None
+        argv = args[0] if args else kwargs.get("args")
+        argv = list(sys.argv[1:] if argv is None else argv)
+        json_requested = False
+        skip_value = False
+        for arg in argv:
+            if skip_value:
+                skip_value = False
+                continue
+            if arg == "--" or not arg.startswith("-"):
+                break
+            if arg == "--json":
+                json_requested = True
+            if arg in ("--account", "--host", "--region"):
+                skip_value = True
         # JSON and Chinese API descriptions use UTF-8 even when Windows redirects stdout.
         for stream in (sys.stdout, sys.stderr):
             if hasattr(stream, "reconfigure"):
@@ -33,11 +47,19 @@ class Root(click.Group):
                 err = InputError(e.format_message())
             else:
                 err = ConfigurationError("Local configuration, JSON input or file operation failed")
-            payload = {"ok": False, "error": err.as_dict()}
-            click.echo(
-                json.dumps(redact(payload, (opts or {}).get("secrets", ())), ensure_ascii=False),
-                err=True,
-            )
+            secrets = (opts or {}).get("secrets", ())
+            if (opts or {}).get("json", json_requested):
+                payload = {"ok": False, "error": err.as_dict()}
+                click.echo(json.dumps(redact(payload, secrets), ensure_ascii=False), err=True)
+            else:
+                if isinstance(e, click.UsageError) and e.ctx is not None:
+                    click.echo(e.ctx.get_usage(), err=True)
+                    click.echo(f"Try '{e.ctx.command_path} --help' for help.\n", err=True)
+                click.echo("Error: " + redact(str(err), secrets), err=True)
+                if err.request_id:
+                    click.echo("Request ID: " + redact(str(err.request_id), secrets), err=True)
+                if err.outcome_unknown:
+                    click.echo("Remote outcome unknown; inspect state before retrying.", err=True)
             if standalone:
                 raise SystemExit(1) from e
             raise err from e

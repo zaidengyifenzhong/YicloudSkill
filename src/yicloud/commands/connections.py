@@ -35,17 +35,12 @@ def connection_commands(group, kind):
     group.add_command(connection)
 
     def connected(verb):
-        @click.command(verb, context_settings={"ignore_unknown_options": verb == "exec"})
-        @click.argument("resource")
         @click.option("--project", required=True)
         @click.option("--zone", required=True)
-        @click.argument("command", nargs=-1, type=click.UNPROCESSED)
         @click.pass_context
-        def command(ctx, resource, project, zone, command):
+        def command(ctx, resource, project, zone, command=()):
             if verb != "ssh-config" and ctx.obj["json"]:
                 raise InputError("SSH commands cannot use --json; use native process streams")
-            if verb != "exec" and command:
-                raise InputError("Unexpected trailing command")
             if verb == "exec" and not command:
                 raise InputError("exec requires -- COMMAND [ARGS...]")
             a = account_for(ctx)
@@ -58,7 +53,12 @@ def connection_commands(group, kind):
             else:
                 ctx.exit(ssh.run(c, command))
 
-        return command
+        if verb == "exec":
+            command = click.argument("command", nargs=-1, type=click.UNPROCESSED)(command)
+        command = click.argument("resource")(command)
+        return click.command(verb, context_settings={"ignore_unknown_options": verb == "exec"})(
+            command
+        )
 
     for verb in ("ssh", "exec", "ssh-config"):
         group.add_command(connected(verb))

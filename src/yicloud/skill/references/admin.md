@@ -20,4 +20,4 @@ GetMonitorData 要求 MetricName、StartTime、EndTime，时间类型和查询�
 
 CreateAccessKey 等接口可能返回新秘密，默认脱敏；用户需要获取时显式 `yicloud --show-secrets api call ...`，不要把结果提交仓库。创建 IAM 用户的 Password 必须来自受信任输入文件或 stdin，输出和错误都会脱敏已识别的秘密字段。
 
-来源：[官方管理中心](https://docs.yicloud.com/)、[SDK mc/iam/monitor/bc](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services)。核对日期 2026-10-19；管理员权限及计费读数未联机验证。
+来源：[官方管理中心](https://docs.yicloud.com/)、[SDK mc/iam/monitor/bc](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services)。

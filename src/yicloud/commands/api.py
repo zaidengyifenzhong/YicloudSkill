@@ -37,9 +37,26 @@ def api_list(ctx, service):
 @click.pass_context
 def api_describe(ctx, service, action):
     op = operation(service, action)
+    schema = request_schema(op)
+    definitions = catalog()["definitions"][service]
+    reachable = {}
+
+    def visit(value):
+        if isinstance(value, dict):
+            ref = value.get("ref")
+            if ref and ref not in reachable:
+                reachable[ref] = definitions[ref]
+                visit(definitions[ref])
+            for child in value.values():
+                visit(child)
+        elif isinstance(value, list):
+            for child in value:
+                visit(child)
+
+    visit(schema)
     emit(
         ctx,
-        dict(op, schema=request_schema(op), definitions=catalog()["definitions"][service]),
+        dict(op, schema=schema, definitions=reachable),
         schema=True,
     )
 

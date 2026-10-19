@@ -2,28 +2,45 @@
 
 import click
 
+from ..catalog import operation, request_schema
 from ..cli_support import assignments, client_for, emit_result, read_json
 from ..errors import InputError
 from ..workflows import paginated, scoped_params
 
 
 def query_command(service, action, name):
-    @click.command(name)
-    @click.option("--file", help="Request JSON; mutually exclusive with flags.")
-    @click.option("--project")
-    @click.option("--zone")
-    @click.option("--set", "settings", multiple=True, help="Official field as FIELD=JSON.")
-    @click.option("--all", "all_pages", is_flag=True, help="Read all pages.")
+    fields = request_schema(operation(service, action))["properties"]
+
     @click.pass_context
-    def command(ctx, file, project, zone, settings, all_pages):
-        if file and (project or zone or settings):
+    def command(ctx, file=None, project=None, zone=None, settings=(), all_pages=False):
+        if file and (project is not None or zone is not None or settings):
             raise InputError("--file and field flags are mutually exclusive")
         params = read_json(file) if file else scoped_params(service, action, project, zone)
-        params.update(assignments(settings))
+        extra = assignments(settings)
+        duplicates = params.keys() & extra.keys()
+        if duplicates:
+            raise InputError(
+                "Fields supplied by both scope flags and --set: " + ", ".join(sorted(duplicates))
+            )
+        params.update(extra)
         with client_for(ctx) as client:
             emit_result(ctx, paginated(client, service, action, params, all_pages), service, action)
 
-    return command
+    if "Limit" in fields and "Offset" in fields:
+        command = click.option("--all", "all_pages", is_flag=True, help="Read all pages.")(command)
+    if fields:
+        command = click.option(
+            "--set", "settings", multiple=True, help="Official field as FIELD=JSON."
+        )(command)
+    if "ZoneId" in fields:
+        command = click.option("--zone")(command)
+    if "Project" in fields:
+        command = click.option("--project")(command)
+    if fields:
+        command = click.option("--file", help="Request JSON; mutually exclusive with flags.")(
+            command
+        )
+    return click.command(name)(command)
 
 
 resources = click.Group(

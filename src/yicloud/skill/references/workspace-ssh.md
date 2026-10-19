@@ -2,6 +2,8 @@
 
 适用于持续开发、调试和远程同步。先选镜像与规格，再创建开发机、等待 Running，配置公钥及网关连接，执行诊断并核验文件。
 
+创建请求可从 [workspace.json](../assets/examples/workspace.json) 复制到用户项目后修改。模板中的资源与路径均为占位符。
+
 ```bash
 yicloud workspace create --name devbox --project example-project --zone example-zone \
   --image example/image:tag --quota-group example-quota --cpu 4 --memory 16Gi --gpu 1 --dry-run
@@ -28,6 +30,6 @@ yicloud workspace ssh-config devbox --project example-project --zone example-zon
 
 连接按账号/工作负载/项目/可用区/资源标识保存；名称或实例变化需重新登记。训练实例启用 SSH 且获得连接命令后，可使用相同的 `job connection set INSTANCE ...`、`job ssh/exec/scp/ssh-config`。登记的 resource 是连接键；同一任务多个实例应使用不同键。不从 API 的 Pod IP 推测网关地址。
 
-来源：[官方 SSH 教程](https://docs.yicloud.com/4/1/1/1/5.html)、[SDK workspace](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services/workspace)。核对日期 2026-10-19；已在 Apple Silicon Mac 上通过真实开发机的 SSH 连接、exec、UTF-8 stdin、退出码和含空格路径 SFTP 往返验证，临时文件已清理。HTTP 只读验证范围见 [api.md](api.md)。
+来源：[官方 SSH 教程](https://docs.yicloud.com/4/1/1/1/5.html)、[SDK workspace](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services/workspace)。
 
-若远程登录 shell 的初始化脚本报错，先用 `workspace exec ... -- uname -s` 或 `sh -c` 区分网络连接与镜像脚本故障。本次验证镜像的 `sh -lc` 因 /etc/profile.d/ssh-init.sh 使用了不兼容语法而失败；不要因此重建开发机或自动改写用户镜像。
+若远程登录 shell 初始化失败，用 `workspace exec ... -- uname -s` 或 `sh -c` 区分连接与镜像脚本故障；不要自动改写用户镜像。

@@ -22,4 +22,4 @@ yicloud job wait JOB_ID --project example-project --zone example-zone --timeout 
 
 可选在用户项目维护 YICLOUD.md，记录跨会话仍有效的资产。建议字段：账号别名、项目、地域、可用区；代码/数据/权重/产物路径；固定镜像和资产版本；消费者与清理条件。凭据、临时日志、配额读数和运行状态不进入该文件。只在用户任务需要时创建，不在本 Skill 安装目录保存用户资产。
 
-来源：[官方训练流程](https://docs.yicloud.com/4/1/1/2/1.html)、[部署流程](https://docs.yicloud.com/4/1/2/1/1.html)。核对日期 2026-10-19；本流程命令均经离线合同检查，尚未真实运行。
+来源：[官方训练流程](https://docs.yicloud.com/4/1/1/2/1.html)、[部署流程](https://docs.yicloud.com/4/1/2/1/1.html)。

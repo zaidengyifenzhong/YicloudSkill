@@ -2,6 +2,8 @@
 
 适用于单机和多角色训练。先准备镜像中的环境和持久存储路径，明确任务退出条件；提交后保留 JobId，观察 Phase、副本、训前检查、日志及产物。
 
+多角色或挂载请求可从 [job.json](../assets/examples/job.json) 复制到用户项目后修改。模板中的资源与路径均为占位符。
+
 ```bash
 yicloud job create --name train --project example-project --zone example-zone \
   --image example/image:tag --command 'python /mnt/project/train.py' \
@@ -26,4 +28,4 @@ yicloud job stop JOB_ID --project example-project --zone example-zone
 yicloud job delete JOB_ID --project example-project --zone example-zone --dry-run
 ```
 
-来源：[创建自定义任务](https://docs.yicloud.com/4/1/1/2/1.html)、[SDK job](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services/job)。核对日期 2026-10-19；已实测 ListJobs 只读接口，训练生命周期和日志仍仅模拟验证。
+来源：[创建自定义任务](https://docs.yicloud.com/4/1/1/2/1.html)、[SDK job](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services/job)。
