@@ -2,7 +2,7 @@
 
 让 Codex、Claude Code 等 Agent 通过可复现命令管理仪电智算云。项目包含同一安装包中的 **yicloud CLI、同步 Python 客户端与按任务组织的 Skill**。
 
-首版基于官方 Go SDK **v0.5.1**，固定提交 `8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5`，文档核对于 **2026-10-19**。227 个公开请求操作全部进入目录，225 个普通 HTTP 操作可调用，网页终端和 WebSocket 日志尾随 2 项明确暂缓。**HTTP API 目前仅完成离线合同与模拟工作流验证，尚未验证真实 API 认证、响应形状与资源调度。标准 SSH 已在 Apple Silicon Mac 上连接真实 Yicloud 开发机，验证远程执行、标准输入、退出码和 SFTP 文件往返。**
+首版基于官方 Go SDK **v0.5.1**，固定提交 `8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5`，文档核对于 **2026-10-19**。227 个公开请求操作全部进入目录，225 个普通 HTTP 操作可调用，网页终端和 WebSocket 日志尾随 2 项明确暂缓。**已在 Apple Silicon Mac 上验证 `.com.cn` 环境的 HMAC 认证和部分只读 API，以及真实开发机的 SSH、远程执行、标准输入、退出码和 SFTP 往返。创建、启停、删除等平台写操作、Token 和服务账号认证尚未联机验证。**
 
 ## 安装
 
@@ -58,6 +58,8 @@ yicloud resources quota-groups --project example-project --zone example-zone
 
 私钥/Token 通过隐藏交互输入。账号默认存储在 `~/.config/yicloud/config.json`，POSIX 限制为 0600；可通过 YICLOUD_CONFIG 指定文件。地址、地域为命令参数 → 环境变量 → 账号 → 官方默认值。官方认证变量整体覆盖，避免混合两个账号的公私钥；Token 优先，认证失败不切换身份。详见[认证说明](src/yicloud/skill/references/accounts.md)。
 
+控制台 `console.yicloud.com` 对应默认 API `https://gate.yicloud.com`；`console.yicloud.com.cn` 则对应 `https://gate.yicloud.com.cn`。两套环境使用各自的凭据。使用后者时，创建账号需增加 `--host https://gate.yicloud.com.cn`，也可用全局 `--host` 临时验证。[官方域名说明](https://docs.yicloud.com/8/1.html)。
+
 所有 example-*、EXAMPLE_* 和 gateway.example 都是占位符，必须用当前账号的实时查询结果替换。Yicloud Workspace 表示开发机；项目、地域、可用区、SKU 和配额组保持平台自身语义。
 
 ## 通用 API
@@ -77,7 +79,7 @@ yicloud --account research --json api call job CreateJob --file examples/job.jso
 {"ok":true,"data":{},"meta":{"service":"job","action":"ListJobs","request_id":"..."}}
 ```
 
-失败 stderr 输出 `{"ok":false,"error":{"kind":"...","message":"...","code":null,"request_id":null,"outcome_unknown":false}}` 并返回非零。默认脱敏；显式全局 --show-secrets 才显示新返回的秘密字段。HTTP 请求默认超时 30 秒，只读最多两次附加重试；写请求不自动重试，超时或中断后应先查询远端状态。正常 TLS 校验，不自动跟随重定向。
+失败 stderr 输出 `{"ok":false,"error":{"kind":"...","message":"...","code":null,"request_id":null,"outcome_unknown":false,"http_status":null}}` 并返回非零。HTTP 错误保留脱敏后的平台 Msg、业务 Code、HTTP 状态与请求 ID，便于诊断环境或凭据不匹配。默认脱敏；显式全局 --show-secrets 才显示新返回的秘密字段。HTTP 请求默认超时 30 秒，只读最多两次附加重试；写请求不自动重试，超时或中断后应先查询远端状态。正常 TLS 校验，不自动跟随重定向。
 
 ## 常用算力工作流
 
@@ -121,6 +123,8 @@ yicloud workspace ssh-config devbox --project example-project --zone example-zon
 
 2026-10-19 Mac 实机验证：macOS 26.7.1 / arm64、OpenSSH 10.3，使用登记的本机密钥连接真实开发机；CLI 接受平台复制的 `ssh -CAXY ... -p 2202`，验证 UTF-8 标准输入、远端退出码 23、含空格路径的 SFTP 上传下载，文件 SHA-256 一致，远端临时文件已清理。此记录不代表所有镜像、网关或 HTTP API 已验证。
 
+同日完成 `.com.cn` 环境 HMAC 认证、项目/可用区/配额/GPU SKU 查询、开发机详情及训练/Ray/部署列表的只读调用。部署列表实际使用内层 `Data` 数组，便利命令已兼容。本次环境中开发机列表返回空，但按已知 ID 查询详情成功；原因尚未确定，因此空列表不能作为资源不存在的证据。未执行平台写操作。完整范围见 [API 说明](src/yicloud/skill/references/api.md)。
+
 部分容器镜像的登录初始化脚本可能无法由 `sh` 解析。本次镜像的 `sh -lc` 在 `/etc/profile.d/ssh-init.sh` 报语法错误，直接执行命令和 `sh -c` 正常；应将镜像脚本错误与 SSH 连接错误区分，不要自动修改用户镜像。
 
 ## Python 客户端
@@ -150,7 +154,7 @@ with YicloudClient.from_account("research") as client:
 | 标准 SSH | 已通过 Mac 实机连接、exec 和 SFTP 验证，需用户提供实际网关连接信息 |
 | 对象存储 | bucket 管理；对象传输另接官方 S3 工具工作流 |
 | WebSocket 尾随 / 网页终端 | 2 项暂缓，明确报错；日志自动刷新用轮询 |
-| 真实平台兼容性 | SSH 已通过一次真实开发机验证；HTTP API 尚未验证，自动测试响应均为合成数据 |
+| 真实平台兼容性 | SSH、HMAC 及部分只读 API 已实测；平台写操作未联测，自动测试使用合成数据 |
 
 官方 [文档](https://docs.yicloud.com/) 说明流程，[固定 Go SDK](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5) 定义合同。fs/alpha 实际使用 yifs 路径且存在函数名/路径差异；标量数组编码为重复查询键以避免 SDK 丢项；Ray 历史日志保留直接 JSON；部署下载按文件处理。差异和维护方法见 [API 说明](src/yicloud/skill/references/api.md)。
 

@@ -204,3 +204,34 @@ def test_sku_type_is_compute_class_not_visibility_scope():
     validate(op, {"SKUType": "gpu", "Scope": "public"})
     with pytest.raises(InputError, match="one of"):
         validate(op, {"SKUType": "public"})
+
+
+def test_http_failure_preserves_platform_reason_and_request_id(account):
+    with client(
+        account,
+        lambda _: httpx.Response(
+            400,
+            json={"Code": -1, "Msg": "fixture key not found"},
+            headers={"X-OGW-Request-Id": "fixture-request"},
+        ),
+    ) as c:
+        with pytest.raises(YicloudError) as caught:
+            c.call("job", "GetJob", JOB)
+    error = caught.value
+    assert str(error) == "HTTP 400: fixture key not found"
+    assert error.code == -1 and error.http_status == 400
+    assert error.request_id == "fixture-request"
+    assert error.as_dict()["http_status"] == 400
+
+
+def test_http_error_body_cannot_echo_credentials_or_signature(account):
+    def handler(request):
+        message = " ".join([account.public_key, account.secret_key, request.headers["X-OGW-SIGN"]])
+        return httpx.Response(400, json={"Code": -1, "Msg": message})
+
+    with client(account, handler) as c:
+        with pytest.raises(YicloudError) as caught:
+            c.call("job", "GetJob", JOB)
+    assert account.public_key not in str(caught.value)
+    assert account.secret_key not in str(caught.value)
+    assert str(caught.value) == "HTTP 400: [REDACTED] [REDACTED] [REDACTED]"

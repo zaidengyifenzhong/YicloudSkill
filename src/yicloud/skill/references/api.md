@@ -14,9 +14,15 @@ yicloud --account research --json api call job CreateJob --file job.json
 
 dry-run 只做本地校验并输出方法、URL、查询字段和请求体，既不验证平台权限，也不保留容量。写请求不会自动重试；只读调用最多附加重试两次。JSON 保留平台数据，错误区分 configuration/input/authentication/network/platform/unsupported_protocol，含 request_id 和 outcome_unknown。TLS 正常校验，重定向不自动跟随。文件响应必须 --output，完成后原子替换。
 
-基准：[官方 Go SDK v0.5.1](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5)，提交 `8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5`，文档核对 2026-10-19。227 个公开请求操作全部收录，225 个普通 HTTP 操作实现，2 个协议暂缓（GetInferSetTerminal、GetInferSetLogsTail）。帮助显示每项状态，未验证真实平台。
+基准：[官方 Go SDK v0.5.1](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5)，提交 `8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5`，文档核对 2026-10-19。227 个公开请求操作全部收录，225 个普通 HTTP 操作实现，2 个协议暂缓（GetInferSetTerminal、GetInferSetLogsTail）。帮助中的 implemented-offline 描述实现及离线覆盖，不表示每项都经过联机验证；已实测的部分只读接口见下文，平台写操作未联测。
 
 已知差异：fs/alpha 的真实产品、路径与直接响应需单独处理；Ray 历史日志 SDK 未定义数据类型，保留直接 JSON；部署日志下载 SDK 使用 Empty，客户端按文件保存；标量数组统一为重复查询键，避免 SDK 编码丢失数组元素。重复键的签名排序与官方算法一致，但服务端数组兼容性仅离线验证。对象上传下载另接 S3 工具，浏览器终端不模拟为成功。
+
+2026-10-19 在 macOS / arm64、`.com.cn` 网关实测 HMAC 认证及以下只读调用：mc 的 ListZones、ListProjects、ListSKUs、ListQuotaGroups、GetProjectQuota；workspace 的 GetWorkspace、ListWorkspaces；job 的 ListJobs；ray 的 ListRayJobs；inferset 的 ListInferSet。空列表响应只验证接口调用和空值解析，不证明有可用资源。没有执行创建、启停、删除或管理员写操作。
+
+本次实测观察到 ListInferSet 在平台 Data 信封内使用 `{"Data":[],"Total":0}`，便利命令的分页读取已兼容该列表字段。另外，ListWorkspaces 在当前环境返回空，但已知 ID 的 GetWorkspace 成功；原因尚未确定。不可据空列表判定已知资源不存在，按 ID 详情核验；名称解析仍受列表可见范围限制。
+
+API 地址按控制台环境显式选择：`console.yicloud.com` → `https://gate.yicloud.com`，`console.yicloud.com.cn` → `https://gate.yicloud.com.cn`，依据[官方域名说明](https://docs.yicloud.com/8/1.html)。错误返回保留脱敏后的 Msg、业务 Code、HTTP 状态和请求 ID；不要输出认证头或签名来排错。
 
 维护者需要 Go（用户运行不需要）：从固定提交干净检出后，在仓库根目录执行：
 

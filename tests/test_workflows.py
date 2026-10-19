@@ -124,3 +124,18 @@ def test_follow_uses_ns_and_deduplicates_boundary(account):
         json.loads(json.dumps(log_params("ray", {"Project": "p", "JobName": "j"})))["Method"]
         == "query_range"
     )
+
+
+def test_serving_pagination_accepts_nested_data_list(account):
+    def handler(request):
+        offset = int(request.url.params.get("Offset", 0))
+        rows = [
+            {"ID": f"fixture-{n}", "Name": f"service-{n}", "Project": "p", "ZoneId": "z"}
+            for n in range(offset, min(offset + 2, 3))
+        ]
+        return httpx.Response(200, json={"Code": 0, "Data": {"Data": rows, "Total": 3}})
+
+    with YicloudClient(account, transport=httpx.MockTransport(handler)) as c:
+        result = paginated(c, "inferset", "ListInferSet", {"Project": "p", "Limit": 2}, True)
+        assert len(result.data["Items"]) == 3
+        assert result.data["Items"][2]["ID"] == "fixture-2"

@@ -65,7 +65,7 @@ class Root(click.Group):
 @click.version_option("0.1.0")
 @click.pass_context
 def main(ctx, alias, host, region, json_output, show_secrets):
-    """Yicloud CLI. API fields are case sensitive; all capabilities are offline verified only."""
+    """Yicloud CLI. API fields are case sensitive; see the skill for validation scope."""
     ctx.obj = dict(
         alias=alias, host=host, region=region, json=json_output, show=show_secrets, secrets=[]
     )

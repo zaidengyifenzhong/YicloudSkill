@@ -1,6 +1,6 @@
 # 公开接口支持矩阵
 
-基准 SDK v0.5.1，核对日期 2026-10-19。所有响应均只经离线模拟测试；implemented-offline 不代表真实平台已验证。
+基准 SDK v0.5.1，核对日期 2026-10-19。implemented-offline 描述实现及离线覆盖，不表示每项经过联机验证。部分真实只读接口及 SSH 验证范围见 [api.md](api.md)；平台写操作未联测。
 
 服务统计：bc: 5，dataset: 10，fs: 9，fs/alpha: 12，iam: 12，inferset: 21，job: 14，mc: 45，modelrepo: 11，monitor: 1，oss: 5，ray: 9，registry: 9，sandbox: 23，service: 9，volume: 12，workspace: 20。
 

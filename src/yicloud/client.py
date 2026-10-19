@@ -12,6 +12,7 @@ from . import auth
 from .catalog import operation, request_schema, validate
 from .config import Account
 from .errors import AuthenticationError, InputError, NetworkError, UnsupportedProtocol, YicloudError
+from .output import redact
 
 
 def scalar(v):
@@ -128,11 +129,32 @@ class YicloudClient:
         request_id = response.headers.get("X-OGW-Request-Id")
         if not 200 <= response.status_code < 300:
             error = AuthenticationError if response.status_code in (401, 403) else YicloudError
+            code = response.status_code
+            message = f"HTTP {response.status_code}"
+            try:
+                failure = response.json()
+            except ValueError:
+                failure = None
+            if isinstance(failure, dict):
+                if failure.get("Code") is not None:
+                    code = failure["Code"]
+                if isinstance(failure.get("Msg"), str) and failure["Msg"]:
+                    message += ": " + redact(
+                        failure["Msg"],
+                        [
+                            self.account.public_key,
+                            self.account.secret_key,
+                            self.account.token,
+                            headers.get("X-OGW-SIGN", ""),
+                            headers.get("Authorization", ""),
+                        ],
+                    )
             raise error(
-                f"HTTP {response.status_code}",
+                message,
                 request_id=request_id,
-                code=response.status_code,
+                code=code,
                 outcome_unknown=not op["read_only"] and response.status_code >= 500,
+                http_status=response.status_code,
             )
         if op["response_mode"] == "file":
             if "json" in response.headers.get("content-type", ""):

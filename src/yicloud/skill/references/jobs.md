@@ -26,4 +26,4 @@ yicloud job stop JOB_ID --project example-project --zone example-zone
 yicloud job delete JOB_ID --project example-project --zone example-zone --dry-run
 ```
 
-来源：[创建自定义任务](https://docs.yicloud.com/4/1/1/2/1.html)、[SDK job](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services/job)。核对日期 2026-10-19；训练响应和运行行为仅模拟验证。
+来源：[创建自定义任务](https://docs.yicloud.com/4/1/1/2/1.html)、[SDK job](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services/job)。核对日期 2026-10-19；已实测 ListJobs 只读接口，训练生命周期和日志仍仅模拟验证。

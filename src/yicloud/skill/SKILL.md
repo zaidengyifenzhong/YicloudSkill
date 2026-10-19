@@ -9,6 +9,8 @@ Yicloud 的 Workspace 是开发机。交互调试选 `workspace`，批量训练�
 
 先核对 `yicloud account current`、`yicloud project list`、`yicloud resources zones`，再在明确项目和可用区内查询 SKU、配额组、镜像与资源。创建命令显式指定项目、可用区、镜像和规格；通用 API 请求使用 SDK 的真实字段。实时查询容量，配额不等于当前空闲节点。资源默认按 ID 定位，按显示名时使用 `--by-name`，同名候选不得自动选择第一项。
 
+账号 API 地址须匹配用户的控制台环境：`.com` 与 `.com.cn` 使用各自网关和凭据，不能只凭 SDK 默认值确定。遇到 `Public Key 不存在`，先查 [accounts.md](references/accounts.md) 核对环境。
+
 最短闭环：查询资源 → 准备共享路径和请求文件 → `create --dry-run` → 提交并保留 ID → `status` / `wait` → 查看日志、实例或事件 → 核验产物 → 按用户意图清理。写请求中断后结果可能未知，先查询远端状态，避免重复创建。中断本地等待不会停止远端任务。
 
 只按当前任务读取：
@@ -27,4 +29,4 @@ Yicloud 的 Workspace 是开发机。交互调试选 `workspace`，批量训练�
 - [api.md](references/api.md)：通用调用、SDK 合同、生成器和已知差异。
 - [support.md](references/support.md)：每个公开请求操作的支持状态。
 
-当前依据 SDK v0.5.1 固定提交；普通 HTTP 能力仅经过离线模拟验证，尚无真实平台兼容性证据。网页终端、WebSocket 实时日志暂缓；自动刷新使用历史日志轮询。标准 SSH 需要先向平台登记公钥并取得实际网关连接命令；不要从 Pod IP 推测公网地址或拼接网关用户名。`--json` 不可与无限日志跟随或交互 SSH 混用。
+当前依据 SDK v0.5.1 固定提交；已在 Mac 上实测 `.com.cn` 的 HMAC、部分只读 API 和真实开发机 SSH，范围及未解决差异见 api.md。平台写操作、Token 和服务账号认证尚未联测。网页终端、WebSocket 实时日志暂缓；自动刷新使用历史日志轮询。标准 SSH 需要先向平台登记公钥并取得实际网关连接命令；不要从 Pod IP 推测公网地址或拼接网关用户名。`--json` 不可与无限日志跟随或交互 SSH 混用。

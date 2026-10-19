@@ -62,7 +62,7 @@ def items(data):
     if isinstance(data, list):
         return data
     if isinstance(data, dict):
-        for key in ("Items", "items", "List", "list", "Replicas", "Pods"):
+        for key in ("Items", "items", "List", "list", "Replicas", "Pods", "Data"):
             if isinstance(data.get(key), list):
                 return data[key]
     raise YicloudError("Unrecognized list response; inspect with api call")
