@@ -1,0 +1,190 @@
+# 人工/Agent 共用任务清单；不是可执行调度程序。状态为设计时快照。
+schema_version: 1
+as_of: '2026-10-19'
+baseline_sha: 2ab800758489bcc563244bad2718341d561ad008
+workflow: agent-workflow.md
+selected_profile: release_v1
+max_concurrent_roles: 4
+max_live_write_executors: 1
+statuses: [todo, ready, in_progress, needs_input, failed, cleanup_pending, verified, deferred]
+roles: [coordinator, architecture, contract, implementation, review, documentation_critic, verification]
+
+profiles:
+  release_v1:
+    required: [T00, T01, T02, T12, T03, T13, T14, T09, T10]
+    limitations_allowed: [documented_upstream_list_visibility, untested_live_writes, untested_extra_auth]
+  live_core:
+    required: [T00, T01, T02, T12, T03, T13, T04, T05, T06, T07, T08, T14, T09, T10]
+    limitations_allowed: [documented_upstream_list_visibility, untested_extra_auth]
+  extra_auth:
+    required: [T00, T11]
+    limitations_allowed: []
+
+tasks:
+  - id: T00
+    title: 确认当前基线与交付范围
+    owner: coordinator
+    status: verified
+    depends_on: []
+    effects: [local_read]
+    acceptance:
+      - 记录工作区、实际提交、安装来源与历史证据
+      - 选择交付范围，建立不含密钥的本地运行记录
+      - 明确文件所有权和已授权的外部操作边界
+
+  - id: T01
+    title: 开发机列表与详情差异诊断
+    owner: contract
+    status: verified
+    depends_on: [T00]
+    effects: [read_api]
+    acceptance:
+      - 在相同环境与参数下对照 Python 和固定版本官方 Go SDK
+      - 诊断问题交 T03 修复并回验；上游限制提供复现证据及按 ID 替代路径
+
+  - id: T02
+    title: 合同、能力覆盖和文档审计
+    owner: contract
+    status: verified
+    depends_on: [T00]
+    effects: [local_read, local_write]
+    acceptance:
+      - 固定 SDK 目录再生成及签名向量可重现
+      - 227 项操作均有正确状态；225 项 HTTP 与两项暂缓边界准确
+      - 原计划验收清单中的缺口有明确任务，不将离线通过标记为联机验证
+
+  - id: T03
+    title: 按架构设计重构或修复，并执行回归检查
+    owner: implementation
+    status: verified
+    depends_on: [T12]
+    effects: [local_write]
+    acceptance:
+      - 每个实际缺陷有修复及能检出原错误的回归检查
+      - 若无代码缺陷，记录无需修改的证据和已确认限制
+      - 共享客户端、CLI、Skill 与示例保持一致
+
+  - id: T12
+    title: 架构设计与实现前评审
+    owner: architecture
+    reviewers: [contract, review]
+    status: verified
+    depends_on: [T01, T02]
+    effects: [local_read, local_write]
+    acceptance:
+      - 阅读实际代码，给出模块边界、数据流、公共接口、失败语义与兼容迁移设计
+      - 设计解释实际问题与取舍，文档位于 docs/architecture.md
+      - 合同与 Review 角色复核，无未解决的重大设计问题
+
+  - id: T13
+    title: 独立代码 Review 与修复复验
+    owner: review
+    status: in_progress
+    depends_on: [T03]
+    effects: [local_read]
+    acceptance:
+      - 由对应代码作者以外的 Agent 审查候选提交与相关现有核心代码
+      - 发现包含定位、触发条件、影响、证据和处理结论
+      - P0/P1 及影响正确性或验收的 P2 已修复并复验，记录目标 SHA
+
+  - id: T14
+    title: 独立质疑文档与实现的一致性
+    owner: documentation_critic
+    status: todo
+    depends_on: [T13]
+    profile_dependencies:
+      live_core: [T05, T06, T07, T08]
+    effects: [local_read, read_api]
+    acceptance:
+      - 从文档提取主张，以固定 SDK、实现、测试和平台证据主动构造反例
+      - README、Skill、帮助、示例与架构的矛盾有依据、归属和回验记录
+      - 影响本次范围的矛盾已关闭，证据不足项明确标注
+
+  - id: T04
+    title: 确定真实工作流的资源与费用范围
+    owner: coordinator
+    status: deferred
+    depends_on: [T13]
+    effects: [read_api]
+    required_inputs:
+      - 账号别名及网关、地域、项目、可用区
+      - 专用临时资源规格、数量、费用上限和最长运行时间
+      - 可用镜像、资源、存储路径和清理归属
+    acceptance:
+      - 对照既有授权补齐范围，检查实际权限和资源条件
+      - 创建本轮资源台账；不使用已有用户开发机做生命周期测试
+
+  - id: T05
+    title: 最小训练任务闭环
+    owner: implementation
+    status: deferred
+    depends_on: [T04]
+    effects: [read_api, write_api, billable_resource]
+    acceptance:
+      - 提交、实例、日志、等待和产物验证形成一致证据
+      - 创建结果未知时先查状态；仅清理本轮登记资源并核验
+
+  - id: T06
+    title: 临时开发机生命周期与 SSH
+    owner: implementation
+    status: deferred
+    depends_on: [T05]
+    effects: [read_api, write_api, ssh, billable_resource]
+    acceptance:
+      - 创建、就绪、SSH、传输、停止、启动和重启符合预期
+      - 远端退出码与文件校验正确，临时资源已清理
+
+  - id: T07
+    title: Ray 任务与 Worker 观察闭环
+    owner: implementation
+    status: deferred
+    depends_on: [T05]
+    effects: [read_api, write_api, billable_resource]
+    acceptance:
+      - 创建、事件、实例、日志、Worker 更新和终态证据符合选定拓扑
+      - 未执行步骤明确说明；临时资源已清理
+
+  - id: T08
+    title: 部署、服务探测和扩缩容闭环
+    owner: implementation
+    status: deferred
+    depends_on: [T05]
+    effects: [read_api, write_api, billable_resource]
+    acceptance:
+      - 就绪后服务请求、实例、日志、扩缩容和启停符合预期
+      - 临时资源已清理并核验
+
+  - id: T09
+    title: 独立包与 Skill 验收
+    owner: verification
+    status: todo
+    depends_on: [T14]
+    effects: [local_read, isolated_install, read_api]
+    acceptance:
+      - 从最终候选提交构建 wheel，在包外环境按用户场景验证
+      - 架构评审、独立代码 Review 与文档质疑结论对应当前候选代码
+      - 适用离线检查、安装器、Skill 和平台证据符合原始验收条件
+      - 缺陷返回实现角色；不将范围未完成报告为通过
+
+  - id: T10
+    title: 提交、推送、CI 与 Mac 安装核验
+    owner: coordinator
+    status: todo
+    depends_on: [T09]
+    effects: [git_push, user_install]
+    acceptance:
+      - 无凭据或私人连接信息入库，清理已完成或明确移交
+      - 正常推送 main；本地与远端 SHA 一致且对应 CI 通过
+      - Mac CLI 和两类 Skill 同源，交付说明准确标注验证边界
+
+  - id: T11
+    title: 可选 Token 与服务账号联测
+    owner: verification
+    status: deferred
+    depends_on: [T00]
+    effects: [read_api]
+    required_inputs:
+      - 已通过隐藏输入配置的相应认证账号别名
+    acceptance:
+      - 分别只读验证两种认证，身份优先级与错误行为符合合同
+      - 不在失败后切换身份，不输出秘密，不修改默认账号

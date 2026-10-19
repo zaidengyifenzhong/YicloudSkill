@@ -69,6 +69,19 @@ def install(target, path=None, uninstall=False):
         previous[dest] = old
         for name in old.keys() | packaged.keys():
             checked_path(dest, name)
+        if not uninstall:
+            # Preflight every target before changing any installation.
+            for name, expected in old.items():
+                item = dest / name
+                if item.is_file() and digest(item) != expected:
+                    raise ConfigurationError(
+                        f"Installed skill file has local edits: {item}; move it before upgrading"
+                    )
+            for name in packaged.keys() - old.keys():
+                if (dest / name).exists():
+                    raise ConfigurationError(
+                        f"Unmanaged file conflicts with packaged skill: {dest / name}"
+                    )
     for dest in destinations:
         old = previous[dest]
         if uninstall:
@@ -88,18 +101,6 @@ def install(target, path=None, uninstall=False):
                 if not any(dest.iterdir()):
                     dest.rmdir()
             continue
-        # Refuse to overwrite edits to files from a previous installation.
-        for name, expected in old.items():
-            item = dest / name
-            if item.is_file() and digest(item) != expected:
-                raise ConfigurationError(
-                    f"Installed skill file has local edits: {item}; move it before upgrading"
-                )
-        for name in packaged.keys() - old.keys():
-            if (dest / name).exists():
-                raise ConfigurationError(
-                    f"Unmanaged file conflicts with packaged skill: {dest / name}"
-                )
         dest.parent.mkdir(parents=True, exist_ok=True)
         stage = Path(tempfile.mkdtemp(prefix=".yicloud-skill-", dir=dest.parent))
         try:

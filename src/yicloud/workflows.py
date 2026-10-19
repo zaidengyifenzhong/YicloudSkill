@@ -58,11 +58,29 @@ WORKLOADS = {
 }
 
 
+# Response fields differ from lifecycle request fields in the fixed SDK.
+LIST_FIELDS = {
+    "workspace": {"project": "Project", "name": "Name", "id": "WorkspaceId"},
+    "job": {"project": "Project", "name": "Name", "id": "JobId"},
+    "ray": {"project": "Namespace", "name": "DisplayName", "id": "RayJobName"},
+    "serving": {"project": "Namespace", "name": "Name", "id": "ID"},
+}
+
+
 def items(data):
     if isinstance(data, list):
         return data
     if isinstance(data, dict):
-        for key in ("Items", "items", "List", "list", "Replicas", "Pods", "Data"):
+        for key in (
+            "Items",
+            "items",
+            "List",
+            "list",
+            "Replicas",
+            "Pods",
+            "Data",
+            "GetInferSetLogsQueryRangeData",
+        ):
             if isinstance(data.get(key), list):
                 return data[key]
     raise YicloudError("Unrecognized list response; inspect with api call")
@@ -109,23 +127,24 @@ def resolve(client, kind, value, project, zone, by_name=False):
     if "ZoneId" in fields:
         params["ZoneId"] = zone
     rows = items(paginated(client, w["service"], w["list"], params, True).data)
+    fields = LIST_FIELDS[kind]
     matches = [
         r
         for r in rows
-        if r.get("Name", r.get("DisplayName")) == value
-        and r.get("Project") == project
+        if r.get(fields["name"]) == value
+        and r.get(fields["project"]) == project
         and r.get("ZoneId") == zone
     ]
     if len(matches) != 1:
         candidates = [
-            {k: r.get(k) for k in (w["id"], "Name", "DisplayName", "Project", "ZoneId")}
+            {k: r.get(k) for k in (fields["id"], fields["name"], fields["project"], "ZoneId")}
             for r in matches
         ]
         raise InputError(
             f"Name lookup found {len(matches)} matches: {json.dumps(candidates, ensure_ascii=False)}"
         )
     row = matches[0]
-    resource_id = row.get(w["id"], row.get("Id"))
+    resource_id = row.get(fields["id"])
     if not resource_id:
         raise YicloudError("Matched resource has no identifier")
     return resource_id
@@ -137,6 +156,46 @@ def scoped_params(service, action, project=None, zone=None, resource_id=None, id
     for key, value in (("Project", project), ("ZoneId", zone), (id_field, resource_id)):
         if key in fields and value is not None:
             params[key] = value
+    return params
+
+
+def validate_workload_extra(kind, extra):
+    """Reject explicit resource overrides before any optional name lookup."""
+    if any(key in extra for key in ("Project", "ZoneId", WORKLOADS[kind]["id"], "Resources")):
+        raise InputError("Additional fields cannot override explicit scope or resource")
+
+
+def workload_params(
+    kind,
+    verb,
+    resource_id,
+    project,
+    zone,
+    *,
+    extra=None,
+    replicas=None,
+    start=None,
+    end=None,
+    limit=200,
+    instance=None,
+):
+    """Build a lifecycle request for an already resolved resource, without performing I/O."""
+    w = WORKLOADS[kind]
+    action = w["status"] if verb == "wait" else w[verb]
+    extra = {} if extra is None else dict(extra)
+    validate_workload_extra(kind, extra)
+    params = scoped_params(w["service"], action, project, zone, resource_id, w["id"])
+    if kind == "job" and verb == "delete":
+        params = {"Resources": [{"Project": project, "JobId": resource_id}]}
+    params.update(extra)
+    if verb == "scale":
+        if replicas is None:
+            raise InputError("scale requires --replicas")
+        if type(replicas) is not int or replicas < 0:
+            raise InputError("scale requires a non-negative integer replica count")
+        params["Replicas"] = replicas
+    if verb == "logs":
+        params = log_params(kind, params, start, end, limit, instance)
     return params
 
 

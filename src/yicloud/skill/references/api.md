@@ -10,9 +10,9 @@ yicloud --account research api call job CreateJob --file job.json --dry-run
 yicloud --account research --json api call job CreateJob --file job.json
 ```
 
-`--file -` 从 stdin 读取 JSON 对象，无请求字段可省略文件；缺失、false、0、空字符串和 null 分别保留。检查 SDK binding 的 required、oneof、嵌套类型及 SDK 常量枚举；部分必填业务条件只在 SDK 注释中出现，需结合描述和官方文档判断。仅在明确需要服务端新增字段时使用 `--allow-unknown-fields`，不会开放任意 URL。
+`--file -` 从 stdin 读取 JSON 对象，无请求字段可省略文件。JSON 请求体保留缺失、false、0、空字符串和 null 的区别；GET 查询把 null 编码为空值，与空字符串合并，省略字段则不发送该键。固定 SDK 的 nil 指针会省略，服务端 nullable 查询行为尚未联机验证。检查 SDK binding 的 required、oneof、嵌套类型及 SDK 常量枚举；部分必填业务条件只在 SDK 注释中出现，需结合描述和官方文档判断。仅在明确需要服务端新增字段时使用 `--allow-unknown-fields`，不会开放任意 URL。
 
-dry-run 只做本地校验并输出方法、URL、查询字段和请求体，既不验证平台权限，也不保留容量。写请求不会自动重试；只读调用最多附加重试两次。JSON 保留平台数据，错误区分 configuration/input/authentication/network/platform/unsupported_protocol，含 request_id 和 outcome_unknown。TLS 正常校验，重定向不自动跟随。文件响应必须 --output，完成后原子替换。
+dry-run 只做本地校验并输出方法、URL、查询字段和请求体，既不验证平台权限，也不保留容量。写请求不会自动重试；只读调用最多附加重试两次。JSON 保留平台数据，错误区分 configuration/input/authentication/network/platform/unsupported_protocol；`--json` 本地取消为 interrupted、退出 130，保守标记结果未知。错误含 request_id 和 outcome_unknown。TLS 正常校验，重定向不自动跟随。文件响应必须 --output，完成后原子替换。
 
 基准：[官方 Go SDK v0.5.1](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5)，提交 `8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5`，文档核对 2026-10-19。227 个公开请求操作全部收录，225 个普通 HTTP 操作实现，2 个协议暂缓（GetInferSetTerminal、GetInferSetLogsTail）。帮助中的 implemented-offline 描述实现及离线覆盖，不表示每项都经过联机验证；已实测的部分只读接口见下文，平台写操作未联测。
 
@@ -20,7 +20,9 @@ dry-run 只做本地校验并输出方法、URL、查询字段和请求体，既
 
 2026-10-19 在 macOS / arm64、`.com.cn` 网关实测 HMAC 认证及以下只读调用：mc 的 ListZones、ListProjects、ListSKUs、ListQuotaGroups、GetProjectQuota；workspace 的 GetWorkspace、ListWorkspaces；job 的 ListJobs；ray 的 ListRayJobs；inferset 的 ListInferSet。空列表响应只验证接口调用和空值解析，不证明有可用资源。没有执行创建、启停、删除或管理员写操作。
 
-本次实测观察到 ListInferSet 在平台 Data 信封内使用 `{"Data":[],"Total":0}`，便利命令的分页读取已兼容该列表字段。另外，ListWorkspaces 在当前环境返回空，但已知 ID 的 GetWorkspace 成功；原因尚未确定。不可据空列表判定已知资源不存在，按 ID 详情核验；名称解析仍受列表可见范围限制。
+本次实测观察到 ListInferSet 在平台 Data 信封内使用 `{"Data":[],"Total":0}`，便利命令的分页读取已兼容该列表字段。固定 SDK 的别名响应另使用 `GetInferSetLogsQueryRangeData`，也已兼容并离线验证；这不证明真实平台非空列表一定使用该键。Ray 列表的 `Namespace/DisplayName/RayJobName` 和部署列表的 `Namespace/Name/ID` 按各自合同映射到按名定位，不把 Ray 的 UUID `Id` 作为操作 `JobName`。
+
+同日独立合同对照确认：在相同身份、网关、地域、项目、可用区和标量请求参数下，Python 与固定 Go SDK 的 ListWorkspaces 均返回 HTTP 200、Code 0、空列表，而已知 ID 的 GetWorkspace 均返回 Running。显式添加 RegionId 仍复现；移除数组过滤亦不改变现象。未发现 Python 特有差异能够解释它，服务端原因尚未确定。不可据空列表判定已知资源不存在，按 ID 详情核验；名称解析仍受列表可见范围限制。固定 Go SDK 会丢弃 WorkspaceId 的 `[]any` 过滤，Python 保留重复键；这项已知编码偏离并不能解释无数组条件下的空列表。
 
 API 地址按控制台环境显式选择：`console.yicloud.com` → `https://gate.yicloud.com`，`console.yicloud.com.cn` → `https://gate.yicloud.com.cn`，依据[官方域名说明](https://docs.yicloud.com/8/1.html)。错误返回保留脱敏后的 Msg、业务 Code、HTTP 状态和请求 ID；不要输出认证头或签名来排错。
 

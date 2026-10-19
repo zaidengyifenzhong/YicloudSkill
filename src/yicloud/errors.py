@@ -39,3 +39,7 @@ class NetworkError(YicloudError):
 
 class UnsupportedProtocol(YicloudError):
     kind = "unsupported_protocol"
+
+
+class OperationInterrupted(YicloudError):
+    kind = "interrupted"

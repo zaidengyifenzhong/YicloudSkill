@@ -3,6 +3,7 @@
 import hashlib
 import hmac
 import json
+import traceback
 from urllib.parse import parse_qsl
 
 import httpx
@@ -235,3 +236,123 @@ def test_http_error_body_cannot_echo_credentials_or_signature(account):
     assert account.public_key not in str(caught.value)
     assert account.secret_key not in str(caught.value)
     assert str(caught.value) == "HTTP 400: [REDACTED] [REDACTED] [REDACTED]"
+
+
+@pytest.mark.parametrize("download", [False, True])
+def test_business_and_download_errors_redact_in_python_client(account, tmp_path, download):
+    """Python callers receive the same protection as CLI callers for server error messages."""
+    target = tmp_path / "logs.txt"
+    target.write_text("previous logs")
+    input_secret = "fixture-password-value"
+
+    def handler(request):
+        message = " ".join(
+            [account.public_key, account.secret_key, request.headers["X-OGW-SIGN"], input_secret]
+        )
+        return httpx.Response(
+            200,
+            json={"Code": 999, "Msg": message},
+            headers={"X-OGW-Request-Id": "fixture-business-error"},
+        )
+
+    service, action, params = (
+        ("inferset", "DownloadInferSetLogs", {"Project": "p", "ID": "i", "Start": 0, "End": 1})
+        if download
+        else ("job", "StopJob", JOB)
+    )
+    # Unknown fields model a future server credential field and require explicit opt-in.
+    with client(account, handler) as c:
+        with pytest.raises(YicloudError) as caught:
+            c.call(
+                service,
+                action,
+                dict(params, Password=input_secret),
+                allow_unknown_fields=True,
+                output=target if download else None,
+            )
+    assert str(caught.value) == " ".join(["[REDACTED]"] * 4)
+    assert caught.value.code == 999 and caught.value.request_id == "fixture-business-error"
+    assert target.read_text() == "previous logs"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["logs.txt"]
+
+
+@pytest.mark.parametrize("readonly", [False, True])
+def test_non_object_response_reports_uncertain_write_outcome(account, readonly):
+    with client(account, lambda _: httpx.Response(200, json=["unexpected"])) as c:
+        with pytest.raises(YicloudError, match="Expected response object") as caught:
+            c.call("job", "GetJob" if readonly else "StopJob", JOB)
+    assert caught.value.outcome_unknown is (not readonly)
+
+
+def test_transport_traceback_does_not_expose_underlying_header_value(account):
+    def handler(_):
+        raise httpx.LocalProtocolError("Illegal header value: fixture-sensitive-token")
+
+    with client(account, handler) as c:
+        with pytest.raises(NetworkError) as caught:
+            c.call("job", "StopJob", JOB)
+    formatted = "".join(traceback.format_exception(caught.value))
+    assert "fixture-sensitive-token" not in formatted
+    assert caught.value.outcome_unknown
+
+
+@pytest.mark.parametrize("code", [None, {}, [], "0", False])
+@pytest.mark.parametrize("readonly", [False, True])
+def test_malformed_business_code_is_not_a_definite_write_failure(account, code, readonly):
+    with client(account, lambda _: httpx.Response(200, json={"Code": code})) as c:
+        with pytest.raises(YicloudError, match="invalid platform Code") as caught:
+            c.call("job", "GetJob" if readonly else "StopJob", JOB)
+    assert caught.value.outcome_unknown is (not readonly)
+
+
+@pytest.mark.parametrize("content_type", ["application/JSON", "Application/Problem+JSON"])
+def test_download_media_type_case_does_not_overwrite_with_error(account, tmp_path, content_type):
+    target = tmp_path / "logs.txt"
+    target.write_text("original logs")
+    with client(
+        account,
+        lambda _: httpx.Response(
+            200, json={"Code": 999, "Msg": "denied"}, headers={"Content-Type": content_type}
+        ),
+    ) as c:
+        with pytest.raises(YicloudError) as caught:
+            c.call(
+                "inferset",
+                "DownloadInferSetLogs",
+                {"Project": "p", "ID": "i", "Start": 0, "End": 1},
+                output=target,
+            )
+    assert caught.value.code == 999 and target.read_text() == "original logs"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["logs.txt"]
+
+
+def test_python_error_metadata_cannot_echo_known_credentials(account):
+    with client(
+        account,
+        lambda _: httpx.Response(
+            400,
+            json={"Code": account.secret_key, "Msg": "safe error message"},
+            headers={"X-OGW-Request-Id": account.public_key},
+        ),
+    ) as c:
+        with pytest.raises(YicloudError) as caught:
+            c.call("job", "GetJob", JOB)
+    error = caught.value.as_dict()
+    assert error["code"] == 400 and error["request_id"] == "[REDACTED]"
+    assert account.secret_key not in json.dumps(error) and account.public_key not in json.dumps(
+        error
+    )
+
+
+def test_python_result_metadata_is_safe_while_raw_response_is_retained(account):
+    with client(
+        account,
+        lambda _: httpx.Response(
+            200,
+            json={"Code": 0, "Data": {}},
+            headers={"X-OGW-Request-Id": account.secret_key},
+        ),
+    ) as c:
+        result = c.call("job", "GetJob", JOB)
+    assert result.request_id == "[REDACTED]"
+    assert result.raw.headers["X-OGW-Request-Id"] == account.secret_key

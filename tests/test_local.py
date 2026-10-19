@@ -234,7 +234,7 @@ def test_input_secret_is_redacted_from_echoed_platform_message(monkeypatch):
     from yicloud.client import YicloudClient
 
     monkeypatch.setattr(
-        "yicloud.cli.client_for",
+        "yicloud.commands.api.client_for",
         lambda ctx: YicloudClient(
             Account(token="fixture-token"),
             transport=httpx.MockTransport(
@@ -334,3 +334,76 @@ def test_platform_ssh_flags_cli_saved_with_scope():
         load("environment", "workspace", "fixture-project", "fixture-zone", "fixture").ssh_flags
         == "CAXY"
     )
+
+
+def test_scope_override_rejected_before_name_lookup(monkeypatch):
+    def no_client(_):
+        pytest.fail("Invalid resource scope must be rejected before creating a client")
+
+    monkeypatch.setattr("yicloud.commands.workloads.client_for", no_client)
+    result = CliRunner().invoke(
+        main,
+        [
+            "job",
+            "stop",
+            "name",
+            "--by-name",
+            "--project",
+            "p",
+            "--zone",
+            "z",
+            "--set",
+            'Project="other"',
+        ],
+    )
+    assert result.exit_code == 1 and "cannot override" in result.output
+
+
+def test_all_skill_targets_are_preflighted_before_any_upgrade(tmp_path, monkeypatch):
+    import yicloud.skill_install as installer
+
+    package = tmp_path / "package"
+    source = package / "skill"
+    source.mkdir(parents=True)
+    (source / "SKILL.md").write_text("version A")
+    codex, claude = tmp_path / "codex", tmp_path / "claude"
+    monkeypatch.setattr(installer, "files", lambda _: package)
+    monkeypatch.setattr(installer, "targets", lambda *args: [codex, claude])
+    install("all")
+    original_manifest = (codex / installer.MARKER).read_bytes()
+    (source / "SKILL.md").write_text("version B")
+    (claude / "SKILL.md").write_text("user edits")
+    with pytest.raises(ConfigurationError, match="local edits"):
+        install("all")
+    assert (codex / "SKILL.md").read_text() == "version A"
+    assert (codex / installer.MARKER).read_bytes() == original_manifest
+    assert (claude / "SKILL.md").read_text() == "user edits"
+
+
+@pytest.mark.parametrize("json_output", [False, True])
+def test_interrupted_write_does_not_claim_remote_resource_is_unchanged(monkeypatch, json_output):
+    import httpx
+    from yicloud.client import YicloudClient
+
+    received = []
+
+    def handler(request):
+        received.append(request.method)
+        raise KeyboardInterrupt()
+
+    monkeypatch.setattr(
+        "yicloud.commands.api.client_for",
+        lambda _: YicloudClient(Account(token="fixture"), transport=httpx.MockTransport(handler)),
+    )
+    result = CliRunner().invoke(
+        main,
+        (["--json"] if json_output else [])
+        + ["api", "call", "workspace", "CreateWorkspace", "--file", "examples/workspace.json"],
+    )
+    assert received == ["POST"] and result.exit_code == 130
+    assert "remote writes may have completed" in result.output
+    assert "remote workload is unchanged" not in result.output
+    if json_output:
+        payload = json.loads(result.output)
+        assert not payload["ok"] and payload["error"]["kind"] == "interrupted"
+        assert payload["error"]["outcome_unknown"] is True

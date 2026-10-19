@@ -16,6 +16,8 @@ yicloud serving wait INFERSET_ID --project example-project --zone example-zone
 
 API 的资源字段为大写 `ID`，ListInferSet 的过滤字段却为 `Id`。Get/Start/Stop/Scale 接口不接收 ZoneId；便利命令仍要求显式 zone 作为用户操作上下文，按名称查找时用于过滤返回资源。通用 API 只发送其声明的字段。
 
+按名定位使用列表元素的 `Namespace`（项目）、`ZoneId` 和 `Name`，取其 `ID`；请求项目字段仍为 `Project`。列表同时兼容平台实测的 `Data` 数组及固定 SDK 声明的 `GetInferSetLogsQueryRangeData` 数组，后者仅经过离线合同验证。
+
 start/stop/delete 对应真实 SDK 接口。日志历史查询使用纳秒整数，默认最近 10 分钟，`--instance` 编码为 Replicas 数组。自动扩缩容使用 Create/Update/Get/DeleteInferSetScaleObject；先读取现有配置再变更。
 
 GetInferSetTerminal、GetInferSetLogsTail 属于暂缓协议，会明确拒绝；不要把空 HTTP 握手视为已连接。历史日志下载使用 api call inferset DownloadInferSetLogs 并提供 --output。SDK 对部分返回类型使用泛化结构，客户端保留 JSON 数据，不据此推断健康状态；wait 遇到不认识的 Status 会报错。

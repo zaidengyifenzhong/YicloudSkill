@@ -15,7 +15,7 @@ yicloud ray workers RAY_JOB_NAME --project example-project --zone example-zone -
 yicloud ray wait RAY_JOB_NAME --project example-project --zone example-zone
 ```
 
-ray 资源直接用 JobName；显示名称使用 `--by-name`。workers.json 只提供 `WorkerGroups`，不可重复覆盖命令参数中的 Project/ZoneId/JobName。更新前读实际配置，避免清空其他组。
+ray 资源直接用操作参数 JobName；列表的对应字段是 `RayJobName`，UUID `Id` 不能替代它。显示名称使用 `--by-name`，在列表的 `Namespace`（项目）、`ZoneId` 和 `DisplayName` 内精确匹配，再把 RayJobName 传入操作请求。workers.json 只提供 `WorkerGroups`，不可重复覆盖命令参数中的 Project/ZoneId/JobName。更新前读实际配置，避免清空其他组。
 
 历史日志使用 GetRayJobLogs 的 Method=query_range，StartTime/EndTime 为纳秒字符串。SDK 没有响应结构，因此保留直接 JSON（若有 Data 则提取 Data）；跟随要求可识别 Items 日志集合，其他形状明确报错后使用通用 API 检查。Method=download 的通用调用需 `--output`，作为原始文件写入。WebSocket 不在首版范围。
 

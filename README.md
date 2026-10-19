@@ -79,7 +79,7 @@ yicloud --account research --json api call job CreateJob --file examples/job.jso
 {"ok":true,"data":{},"meta":{"service":"job","action":"ListJobs","request_id":"..."}}
 ```
 
-失败 stderr 输出 `{"ok":false,"error":{"kind":"...","message":"...","code":null,"request_id":null,"outcome_unknown":false,"http_status":null}}` 并返回非零。HTTP 错误保留脱敏后的平台 Msg、业务 Code、HTTP 状态与请求 ID，便于诊断环境或凭据不匹配。默认脱敏；显式全局 --show-secrets 才显示新返回的秘密字段。HTTP 请求默认超时 30 秒，只读最多两次附加重试；写请求不自动重试，超时或中断后应先查询远端状态。正常 TLS 校验，不自动跟随重定向。
+业务、输入等错误在 stderr 输出 `{"ok":false,"error":{"kind":"...","message":"...","code":null,"request_id":null,"outcome_unknown":false,"http_status":null}}` 并返回非零。本地 Ctrl-C/交互取消返回 130；`--json` 使用同一失败信封，kind 为 interrupted，并保守标记结果未知，普通模式输出文字说明。中断不能证明远端写操作未发生。HTTP 错误保留脱敏后的平台 Msg、有效整数业务 Code、HTTP 状态与请求 ID，便于诊断环境或凭据不匹配；畸形的成功响应业务码按协议错误处理，写结果未知。默认脱敏；显式全局 --show-secrets 才显示新返回的秘密字段。HTTP 请求默认超时 30 秒，只读最多两次附加重试；写请求不自动重试，超时或中断后应先查询远端状态。正常 TLS 校验，不自动跟随重定向。
 
 ## 常用算力工作流
 
@@ -123,7 +123,7 @@ yicloud workspace ssh-config devbox --project example-project --zone example-zon
 
 2026-10-19 Mac 实机验证：macOS 26.7.1 / arm64、OpenSSH 10.3，使用登记的本机密钥连接真实开发机；CLI 接受平台复制的 `ssh -CAXY ... -p 2202`，验证 UTF-8 标准输入、远端退出码 23、含空格路径的 SFTP 上传下载，文件 SHA-256 一致，远端临时文件已清理。此记录不代表所有镜像、网关或 HTTP API 已验证。
 
-同日完成 `.com.cn` 环境 HMAC 认证、项目/可用区/配额/GPU SKU 查询、开发机详情及训练/Ray/部署列表的只读调用。部署列表实际使用内层 `Data` 数组，便利命令已兼容。本次环境中开发机列表返回空，但按已知 ID 查询详情成功；原因尚未确定，因此空列表不能作为资源不存在的证据。未执行平台写操作。完整范围见 [API 说明](src/yicloud/skill/references/api.md)。
+同日完成 `.com.cn` 环境 HMAC 认证、项目/可用区/配额/GPU SKU 查询、开发机详情及训练/Ray/部署列表的只读调用。部署列表实际使用内层 `Data` 数组，便利命令已兼容。独立对照确认：相同环境及标量参数下，固定 Go SDK 与 Python 均出现开发机列表为空、按已知 ID 查询详情成功；服务端原因尚未确定，空列表不能作为资源不存在的证据。未执行平台写操作。完整范围见 [API 说明](src/yicloud/skill/references/api.md)。
 
 部分容器镜像的登录初始化脚本可能无法由 `sh` 解析。本次镜像的 `sh -lc` 在 `/etc/profile.d/ssh-init.sh` 报语法错误，直接执行命令和 `sh -c` 正常；应将镜像脚本错误与 SSH 连接错误区分，不要自动修改用户镜像。
 
@@ -161,6 +161,10 @@ with YicloudClient.from_account("research") as client:
 设计参考 [InspireSkill](https://github.com/realZillionX/InspireSkill) 的 CLI + Skill 分层、按需参考和稳定资产文档模式，未复制其平台私有 API 或账户资产。归属见 [THIRD_PARTY.md](THIRD_PARTY.md)。
 
 ## 开发与验证
+
+后续 Agent 的角色分工、任务依赖、联机验证与发布流程见 [Agent 交付流程](docs/agent-workflow.md)，可交接的任务清单见 [agent-tasks.yaml](docs/agent-tasks.yaml)。流程从当前已实现版本继续，区分首版交付与额外真实工作流验证。
+
+[架构设计](docs/architecture.md)说明 CLI 命令组、工作负载规则、公共客户端、平台协议与 HTTP 传输的依赖边界，以及本次重构的兼容性约束。
 
 ```bash
 uv venv --python 3.12

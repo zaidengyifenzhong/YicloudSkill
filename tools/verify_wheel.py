@@ -48,6 +48,57 @@ with tempfile.TemporaryDirectory(prefix="yicloud-wheel-") as scratch:
 
     assert len(call("--json", "api", "list")["data"]) == 227
     assert call("--json", "api", "describe", "job", "CreateJob")["data"]["schema"]["required"]
+    # Exercise packaged command adapters, pure creation rules and the client protocol together.
+    for kind, scope in (("workspace", "project"), ("job", "tenant")):
+        options = [
+            "--name",
+            "fixture",
+            "--project",
+            "fixture-project",
+            "--zone",
+            "fixture-zone",
+            "--image",
+            "fixture/image:tag",
+            "--sku",
+            "fixture-sku",
+            "--sku-scope",
+            scope,
+            "--dry-run",
+        ]
+        if kind == "job":
+            options += ["--command", "printf fixture"]
+        request = call("--json", kind, "create", *options)["data"]
+        assert request["validation"] == "passed" and request["body"]["Name"] == "fixture"
+    assert (
+        call(
+            "--json",
+            "ray",
+            "stop",
+            "fixture",
+            "--project",
+            "fixture-project",
+            "--zone",
+            "fixture-zone",
+            "--dry-run",
+        )["data"]["validation"]
+        == "passed"
+    )
+    assert (
+        call(
+            "--json",
+            "serving",
+            "scale",
+            "fixture",
+            "--project",
+            "fixture-project",
+            "--zone",
+            "fixture-zone",
+            "--replicas",
+            "0",
+            "--dry-run",
+        )["data"]["body"]["Replicas"]
+        == 0
+    )
     skill = root / "installed-skill"
     call("--json", "skill", "install", "--target", "codex", "--path", str(skill))
     assert (skill / "SKILL.md").is_file()

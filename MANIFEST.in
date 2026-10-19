@@ -6,3 +6,4 @@ include install.sh install.ps1
 recursive-include tools *.py *.go *.json
 recursive-include tests *.py *.json
 recursive-include examples *.json
+recursive-include docs *.md *.yaml

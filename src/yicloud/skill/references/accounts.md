@@ -28,6 +28,6 @@ yicloud --account research account check
 
 默认超时 30 秒，Python 客户端支持 timeout 参数。首版不读取 SDK 的 YICLOUD_MAX_RETRIES/YICLOUD_TIMEOUT，避免覆盖只读最多两次附加重试的边界。HTTP 401/403 检查认证和权限，业务失败保留平台 Code 与请求 ID，网络写失败先检查远端状态。
 
-正常响应中的密钥字段默认脱敏；确实需要读取接口新建密钥时显式使用全局 `--show-secrets`。已加载账号的凭据始终隐藏。JSON 成功信封为 `ok/data/meta`，失败为 `ok:false/error`，错误写入 stderr，退出非零。
+CLI 正常响应中的密钥字段默认脱敏；确实需要读取接口新建密钥时显式使用全局 `--show-secrets`。已加载账号的凭据始终隐藏。JSON 成功信封为 `ok/data/meta`，业务和输入等失败为 `ok:false/error`，错误写入 stderr，退出非零。本地 Ctrl-C/交互取消返回 130；`--json` 使用失败信封（kind=interrupted），普通模式输出文字说明。取消时保守标记结果未知，不能证明远端写入未执行。Python 成功数据及原始响应仍由脚本处理；客户端会清理错误消息和元数据中的已知凭据，并抑制可能包含秘密的底层传输异常链。
 
 来源：[SDK 认证](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/base/auth)、[官方文档入口](https://docs.yicloud.com/)。核对日期 2026-10-19；已在 `.com.cn` 环境实测 HMAC 认证和部分只读接口，Token 与服务账号认证尚未联测。

@@ -6,8 +6,17 @@ import httpx
 import pytest
 
 from yicloud.client import YicloudClient
+from yicloud.creation import create_params
 from yicloud.errors import InputError, YicloudError
-from yicloud.workflows import follow_logs, log_params, paginated, resolve, wait
+from yicloud.workflows import (
+    follow_logs,
+    items,
+    log_params,
+    paginated,
+    resolve,
+    wait,
+    workload_params,
+)
 
 
 def test_pagination_and_ambiguous_names(account):
@@ -139,3 +148,109 @@ def test_serving_pagination_accepts_nested_data_list(account):
         result = paginated(c, "inferset", "ListInferSet", {"Project": "p", "Limit": 2}, True)
         assert len(result.data["Items"]) == 3
         assert result.data["Items"][2]["ID"] == "fixture-2"
+
+
+def test_lifecycle_requests_reuse_platform_rules_without_cli():
+    assert workload_params("job", "delete", "j", "p", "z") == {
+        "Resources": [{"Project": "p", "JobId": "j"}]
+    }
+    assert workload_params("serving", "scale", "i", "p", "z", replicas=0) == {
+        "Project": "p",
+        "ID": "i",
+        "Replicas": 0,
+    }
+    extra = {"Force": False}
+    request = workload_params("workspace", "stop", "w", "p", "z", extra=extra)
+    assert request["Project"] == "p" and request["WorkspaceId"] == "w"
+    assert request["Force"] is False and extra == {"Force": False}
+    assert request is not extra
+
+
+@pytest.mark.parametrize("replicas", [None, -1, True, "1"])
+def test_lifecycle_scale_rejects_invalid_replica_counts(replicas):
+    with pytest.raises(InputError, match="replica"):
+        workload_params("serving", "scale", "i", "p", "z", replicas=replicas)
+
+
+@pytest.mark.parametrize("field", ["Project", "ZoneId", "JobId", "Resources"])
+def test_lifecycle_request_rejects_resource_scope_override(field):
+    with pytest.raises(InputError, match="cannot override"):
+        workload_params("job", "delete", "j", "p", "z", extra={field: "other"})
+
+
+@pytest.mark.parametrize("kind", ["job", "ray", "serving"])
+def test_lifecycle_logs_use_service_contracts(kind):
+    request = workload_params(
+        kind, "logs", "fixture", "p", "z", start=0, end=100, instance="replica"
+    )
+    if kind == "ray":
+        assert request["StartTime"] == "0" and request["EndTime"] == "100"
+        assert request["Method"] == "query_range"
+    else:
+        assert request["Start"] == 0 and request["End"] == 100
+        assert request["Replicas"] == (["replica"] if kind == "serving" else "replica")
+
+
+@pytest.mark.parametrize("kind", ["workspace", "job"])
+def test_creation_rejects_invalid_scope_without_click(kind):
+    with pytest.raises(InputError, match="SKU scope"):
+        create_params(
+            kind,
+            name="n",
+            project="p",
+            zone="z",
+            image="image",
+            entrypoint="true",
+            sku="sku",
+            sku_scope="bogus",
+        )
+
+
+@pytest.mark.parametrize(
+    "kind,id_field,name_field",
+    [
+        ("ray", "RayJobName", "DisplayName"),
+        ("serving", "ID", "Name"),
+    ],
+)
+def test_name_lookup_uses_fixed_sdk_response_fields(account, kind, id_field, name_field):
+    good = {"Namespace": "p", "ZoneId": "z", name_field: "friendly", id_field: "operation-id"}
+    rows = [dict(good, Namespace="other"), dict(good, ZoneId="other"), good]
+    if kind == "ray":
+        good["Id"] = "unrelated-uuid"
+    wrapper = "Items" if kind == "ray" else "GetInferSetLogsQueryRangeData"
+    with YicloudClient(
+        account,
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json={"Code": 0, "Data": {wrapper: rows, "Total": 3}})
+        ),
+    ) as c:
+        rid = resolve(c, kind, "friendly", "p", "z", True)
+    assert rid == "operation-id"
+    request = workload_params(kind, "stop", rid, "p", "z")
+    assert request["JobName" if kind == "ray" else "ID"] == "operation-id"
+    assert request["Project"] == "p" and "Namespace" not in request
+
+
+def test_ray_name_lookup_rejects_missing_operation_id_and_ambiguity(account):
+    rows = [{"Namespace": "p", "ZoneId": "z", "DisplayName": "friendly", "Id": "uuid"}]
+    with YicloudClient(
+        account,
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(
+                200, json={"Code": 0, "Data": {"Items": rows, "Total": len(rows)}}
+            )
+        ),
+    ) as c:
+        with pytest.raises(YicloudError, match="no identifier"):
+            resolve(c, "ray", "friendly", "p", "z", True)
+        rows[0]["RayJobName"] = "first"
+        rows.append(dict(rows[0], RayJobName="second"))
+        with pytest.raises(InputError, match="2 matches") as caught:
+            resolve(c, "ray", "friendly", "p", "z", True)
+    assert "RayJobName" in str(caught.value) and "Namespace" in str(caught.value)
+
+
+@pytest.mark.parametrize("key", ["Data", "GetInferSetLogsQueryRangeData"])
+def test_deployment_known_list_containers(key):
+    assert items({key: [{"ID": "fixture"}]}) == [{"ID": "fixture"}]
