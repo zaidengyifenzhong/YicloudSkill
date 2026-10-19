@@ -17,4 +17,6 @@ services.json：`{"Project":"example-project","ZoneId":"example-zone"}`；sandbo
 
 沙盒先创建环境，检查实例容量和预热池，再创建沙盒；通过 GetSandbox、GetInstanceStateStats、ListEnvironmentEvents 和历史日志观察。UpdateInstanceCapacity、UpdatePrewarmSize 和 UpdateSandboxLifecycle 是写操作，可能影响资源占用；dry-run 只验证请求，不预留容量。
 
+Sandbox 与开发机属于独立集群，网络隔离是平台限制，不能假定内网地址或服务域名可跨集群直连；不要通过改路由、开隧道或放宽隔离来绕过限制。包管理依赖下载不代表可以访问另一集群的业务服务。
+
 来源：[官方应用中心入口](https://docs.yicloud.com/)、[SDK service](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services/service)、[SDK sandbox](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services/sandbox)。

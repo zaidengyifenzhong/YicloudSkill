@@ -15,8 +15,9 @@ Yicloud 的 Workspace 是开发机。`workspace` 适合交互开发，`job` 提�
 - 开发机、SSH、exec、文件传输：[workspace-ssh.md](references/workspace-ssh.md)。
 - 训练与日志：[jobs.md](references/jobs.md)；Ray：[ray.md](references/ray.md)；模型部署：[serving.md](references/serving.md)。
 - 数据与挂载：[storage.md](references/storage.md)；镜像、模型、数据集：[assets.md](references/assets.md)。
+- CPU 联网准备、GPU 离线环境与内部源：[internal-sources.md](references/internal-sources.md)。具体包源地址按需读取用户项目的 YICLOUD.md，不写入公开 Skill。
 - 托管服务与沙盒：[services-sandbox.md](references/services-sandbox.md)；权限、配额管理与账单：[admin.md](references/admin.md)。
 - 跨开发、训练、部署的连续任务或维护项目资产：[workflows.md](references/workflows.md)。
 - 便利命令未覆盖的 API、响应与错误处理：[api.md](references/api.md)。
 
-创建前明确资源规格与输入输出路径。H200 默认不连外网；优先复用已准备好的镜像，需要配置环境时先在可联网 CPU 开发机完成并制作镜像，见[离线 GPU 环境准备](references/assets.md#离线-gpu-环境准备)。简单请求使用快捷参数，复杂请求按需复制 `assets/examples/` 模板并替换占位符，dry-run 后提交。记录返回标识，观察状态与日志，按用户目标验收产物。写请求超时或中断后先查询远端状态，避免重复创建；中断本地等待不会停止远端任务。清理遵循用户的资源保留意图。
+创建前明确资源规格与输入输出路径。H200 默认不连外网；公网内容在可联网 CPU 开发机准备，内部源覆盖的依赖可在目标 GPU 环境安装验证，再固化镜像，见[离线环境与内部源](references/internal-sources.md)。简单请求使用快捷参数，复杂请求按需复制 `assets/examples/` 模板并替换占位符，dry-run 后提交。记录返回标识，观察状态与日志，按用户目标验收产物。写请求超时或中断后先查询远端状态，避免重复创建；中断本地等待不会停止远端任务。清理遵循用户的资源保留意图。
