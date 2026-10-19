@@ -1,0 +1,4 @@
+interface:
+  display_name: "Yicloud"
+  short_description: "用 CLI 管理仪电智算云开发机、训练、部署、存储和 SSH 工作流"
+  default_prompt: "使用 $yicloud 查询我的算力资源，并完成提交、观察与产物核验。"

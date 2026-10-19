@@ -1,0 +1,19 @@
+{
+  "Name": "example-train",
+  "Project": "example-project",
+  "ZoneId": "example-zone",
+  "SKUPublic": true,
+  "TaskSpecs": {
+    "t0": {
+      "Image": "example/image:tag",
+      "SKUId": "EXAMPLE_SKU",
+      "Command": [
+        "sh",
+        "-lc",
+        "python /mnt/project/train.py"
+      ],
+      "Replicas": 1,
+      "Env": {}
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "DisplayName": "example-ray",
+  "Project": "example-project",
+  "ZoneId": "example-zone",
+  "Image": "example/ray:tag",
+  "Entrypoint": "python /mnt/project/ray_job.py",
+  "QuotaGroup": "example-quota"
+}

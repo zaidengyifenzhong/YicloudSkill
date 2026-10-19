@@ -1,0 +1,26 @@
+[
+  {
+    "body": "{\"Image\":\"测试\",\"Enabled\":false}",
+    "public": "fixture-public",
+    "query": "z=\u0026a=%E4%B8%AD%E6%96%87\u0026a=two+words\u0026bare\u0026false=false\u0026zero=0",
+    "secret": "fixture-secret",
+    "signature": "90072f0e67fae049c438c561c582d928a429fb94e2bfd2797a7fef51afbc7dc6",
+    "timestamp": "1700000000123"
+  },
+  {
+    "body": "",
+    "public": "p",
+    "query": "",
+    "secret": "s",
+    "signature": "5422e0471d83abb6aa78ed6cf61f84dbdbd30629e63f2362ae93c9baf85ffa51",
+    "timestamp": "0"
+  },
+  {
+    "body": "{\"n\":0,\"empty\":\"\",\"nil\":null}",
+    "public": "public",
+    "query": "A=1\u0026A=2\u0026a=3\u0026escaped=%26%3D\u0026plus=%2B",
+    "secret": "secret",
+    "signature": "6a7313de0bd714184c899728a4109a0c3b4055c9c5148604b9fae98d7dc797bd",
+    "timestamp": "1792396800000"
+  }
+]

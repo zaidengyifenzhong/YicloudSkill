@@ -1,0 +1,13 @@
+{
+  "Name": "example-dev",
+  "Project": "example-project",
+  "ZoneId": "example-zone",
+  "Image": "example/image:tag",
+  "QuotaGroup": "example-quota",
+  "CPU": "4",
+  "Memory": "16Gi",
+  "SystemDisk": {
+    "Name": "example-dev-system",
+    "Storage": "50Gi"
+  }
+}

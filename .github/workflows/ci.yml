@@ -1,0 +1,65 @@
+name: CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  offline:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ['3.10', '3.12', '3.14']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -e ".[dev]" setuptools wheel
+      - run: python -m ruff check src tests tools
+      - run: python -m ruff format --check src tests tools
+      - run: python -m pytest -q
+      - run: python tools/check_catalog.py
+      - run: python tools/validate_skill.py
+      - run: python -m build --no-isolation
+      - run: python -m pip download --dest wheelhouse ./dist/yicloud_skill-0.1.0-py3-none-any.whl
+      - run: python tools/verify_wheel.py dist/yicloud_skill-0.1.0-py3-none-any.whl --wheelhouse wheelhouse
+      - name: Prepare installer managers
+        if: matrix.python == '3.12'
+        run: python -m pip install uv pipx
+      - name: Verify uv installer
+        if: matrix.python == '3.12'
+        run: python tools/check_installer.py dist/yicloud_skill-0.1.0-py3-none-any.whl --wheelhouse wheelhouse --manager uv
+      - name: Verify pipx installer
+        if: matrix.python == '3.12'
+        run: python tools/check_installer.py dist/yicloud_skill-0.1.0-py3-none-any.whl --wheelhouse wheelhouse --manager pipx
+      - name: Installer syntax (Bash)
+        if: runner.os != 'Windows'
+        run: bash -n install.sh
+      - name: Installer syntax (PowerShell)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $Errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile("$PWD/install.ps1", [ref]$null, [ref]$Errors)
+          if ($Errors.Count) { throw ($Errors | Out-String) }
+  sdk-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: git clone https://gitee.com/yicloud-team/openapi-sdk-go.git /tmp/yicloud-sdk
+      - run: git -C /tmp/yicloud-sdk checkout 8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5
+      - run: go run tools/catalog.go /tmp/yicloud-sdk > /tmp/catalog.json
+      - run: diff -u src/yicloud/data/catalog.json /tmp/catalog.json
+      - run: go -C /tmp/yicloud-sdk run "$GITHUB_WORKSPACE/tools/sign_vectors.go" > /tmp/sign_vectors.json
+      - run: diff -u tests/sign_vectors.json /tmp/sign_vectors.json
+      - run: python tools/render_support.py
+      - run: git diff --exit-code
