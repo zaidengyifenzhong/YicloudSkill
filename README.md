@@ -17,15 +17,19 @@ yicloud skill install --target all
 
 也支持 pipx；克隆仓库后可使用 `bash install.sh`（macOS / Linux）或 `.\install.ps1`（Windows）完成安装。
 
+从源码更新可运行 `uv tool install --force .`，然后运行 `yicloud skill install --target all` 同步指引和模板。`yicloud skill status` 可检查安装内容是否一致；安装器会保留本地修改并报告冲突。
+
 ## 快速开始
 
-添加账号，按提示输入凭据：
+添加本地凭据配置，按提示输入已有云平台账号的凭据；`account add` 不会创建云平台账号：
 
 ```bash
 yicloud account add research --auth hmac --host https://gate.yicloud.com.cn
 yicloud account use research
 yicloud account check
 ```
+
+`research` 是自定义的本地配置别名，可以改为 `work` 等名称；后续 `account use`、`--account` 和 Python 的 `from_account()` 使用同一别名。它与平台用户名（例如查询开发机时的 `Creator`）及项目标识 `Project` 是不同的概念，不能相互替代。
 
 网关应与控制台一致：`console.yicloud.com.cn` 使用 `gate.yicloud.com.cn`，`console.yicloud.com` 使用 `gate.yicloud.com`。多账号、Token 和环境变量配置见[认证说明](src/yicloud/skill/references/accounts.md)。
 
@@ -64,6 +68,28 @@ yicloud api describe job CreateJob
 yicloud api call job CreateJob --file job.json --dry-run
 ```
 
+## 开发者工具
+
+可选上下文减少重复范围参数，显式命令参数优先；通用 API 与请求文件保持原样：
+
+```bash
+yicloud context set lab --account research --project PROJECT --zone ZONE
+yicloud context use lab
+yicloud context show
+yicloud job logs JOB_ID --since 15m
+yicloud job wait JOB_ID --no-timeout
+yicloud workspace connection list
+yicloud workspace scp ./src devbox:/work/src --recursive
+yicloud doctor local
+yicloud doctor api
+yicloud workspace doctor devbox
+yicloud skill status --target all
+```
+
+`devbox` 是已登记的本地 SSH 连接键。`--no-context` 忽略当前上下文；没有项目目录自动发现。0.2 的 job 快捷命令默认 `sh -c`，原先依赖登录初始化的调用加 `--login-shell`。请求文件的 Command 数组不变。等待超时不停止远端任务；目录复制不是增量同步。
+
+上下文、诊断和输出契约见[开发工具](src/yicloud/skill/references/developer-tools.md)。远端长任务可使用 Job 或 Ray；SSH exec 为同步执行，SCP 为完整文件复制。
+
 ## Python
 
 ```python
@@ -80,13 +106,14 @@ with YicloudClient.from_account("research") as client:
 
 ## 文档
 
+- [官方 OpenAPI 文档中心](https://api.yicloud.com.cn/)
 - [开发机与 SSH](src/yicloud/skill/references/workspace-ssh.md)
 - [训练任务](src/yicloud/skill/references/jobs.md) · [Ray](src/yicloud/skill/references/ray.md) · [模型部署](src/yicloud/skill/references/serving.md)
 - [存储](src/yicloud/skill/references/storage.md) · [镜像、模型与数据集](src/yicloud/skill/references/assets.md)
 - [端到端工作流](src/yicloud/skill/references/workflows.md)
 - [API 说明](src/yicloud/skill/references/api.md) · [接口支持矩阵](src/yicloud/skill/references/support.md)
 
-当前基于仪电智算云 Go SDK v0.5.1，实现 225 个 HTTP 操作。网页终端与 WebSocket 日志暂不支持，日志跟随使用轮询。已实测 `.com.cn` 的 HMAC、部分只读接口和 Mac 上的 SSH/SFTP；平台写操作、Token 与服务账号认证尚未联机验证。
+当前基于仪电智算云 Go SDK v0.5.1，实现 225 个 HTTP 操作。网页终端与 WebSocket 日志暂不支持，日志跟随使用轮询。已实测 `.com.cn` 的 HMAC、部分只读接口和 Mac 上的 SSH/SFTP；临时 CPU 开发机的创建、等待、删除已实测；Job/Ray/Serving 写操作、Token 与服务账号认证尚未联机验证。
 
 ## 开发
 

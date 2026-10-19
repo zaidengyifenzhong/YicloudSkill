@@ -3,7 +3,7 @@
 import click
 
 from ..catalog import operation, request_schema
-from ..cli_support import assignments, client_for, emit_result, read_json
+from ..cli_support import assignments, client_for, emit_result, read_json, scope_for
 from ..errors import InputError
 from ..workflows import paginated, scoped_params
 
@@ -23,6 +23,18 @@ def query_command(service, action, name):
                 "Fields supplied by both scope flags and --set: " + ", ".join(sorted(duplicates))
             )
         params.update(extra)
+        if not file:
+            allowed = tuple(
+                k
+                for k, field in (("project", "Project"), ("zone", "ZoneId"))
+                if field in fields
+                and field not in params
+                and not (service == "mc" and action == "ListProjects")
+            )
+            project, zone = scope_for(
+                ctx, params.get("Project"), params.get("ZoneId"), allowed=allowed
+            )
+            params.update(scoped_params(service, action, project, zone))
         with client_for(ctx) as client:
             emit_result(ctx, paginated(client, service, action, params, all_pages), service, action)
 

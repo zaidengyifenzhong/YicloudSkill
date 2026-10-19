@@ -24,4 +24,6 @@ aws --endpoint-url "$YICLOUD_S3_ENDPOINT" s3 cp s3://example-bucket/output/resul
 
 该命令依赖另行安装 AWS CLI 并按官方资料配置 S3 访问凭据。SDK 没有对象上传下载操作，CLI 不另造上传接口。
 
+开发机删除的 `DelWithCloudVolume=true` 表示关联云盘移入回收站，不等于永久删除。实测指定 IDs 时，ListVolumes 的 SoftDeleted=true/false 均返回同一云盘，且 DeleteTime 非零但 SoftDeleted=false；筛选优先级及字段语义仍待平台确认。清理时结合删除请求结果、按 ID 详情、DeleteTime 与回收站状态核验，不能只依赖 SoftDeleted，也不能据此声称物理删除完成。
+
 来源：[文件存储](https://docs.yicloud.com/4/3/1/2.html)、[对象存储](https://docs.yicloud.com/4/3/1/3.html)、[SDK services](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services)。

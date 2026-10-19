@@ -5,19 +5,21 @@ from dataclasses import asdict
 import click
 
 from .. import ssh
-from ..cli_support import account_for, emit
+from ..cli_support import account_for, emit, scope_for
 from ..errors import InputError
+from .doctor import remote_doctor
 
 
 def connection_commands(group, kind):
+    group.add_command(remote_doctor(kind))
     connection = click.Group(
         "connection", help="Store explicit platform SSH connection information."
     )
 
     @connection.command("set")
     @click.argument("resource")
-    @click.option("--project", required=True)
-    @click.option("--zone", required=True)
+    @click.option("--project")
+    @click.option("--zone")
     @click.option(
         "--ssh-command",
         required=True,
@@ -27,22 +29,57 @@ def connection_commands(group, kind):
     @click.option("--proxy-jump")
     @click.pass_context
     def set_connection(ctx, resource, project, zone, ssh_command, identity, proxy_jump):
+        project, zone = scope_for(ctx, project, zone, required=True)
         a = account_for(ctx)
         c = ssh.Connection.parse(ssh_command, identity, proxy_jump)
         ssh.save(a.alias, kind, project, zone, resource, c)
         emit(ctx, {"resource": resource, "connection": asdict(c)})
 
+    @connection.command("list")
+    @click.option("--project")
+    @click.option("--zone")
+    @click.pass_context
+    def list_connections(ctx, project, zone):
+        project, zone = scope_for(ctx, project, zone)
+        a = account_for(ctx)
+        emit(ctx, ssh.connections(a.alias, kind, project, zone))
+
+    def local_connection(verb):
+        @click.argument("resource")
+        @click.option("--project")
+        @click.option("--zone")
+        @click.pass_context
+        def command(ctx, resource, project, zone):
+            project, zone = scope_for(ctx, project, zone, required=True)
+            a = account_for(ctx)
+            if verb == "show":
+                emit(
+                    ctx,
+                    {
+                        "resource": resource,
+                        "connection": asdict(ssh.load(a.alias, kind, project, zone, resource)),
+                    },
+                )
+            else:
+                ssh.remove(a.alias, kind, project, zone, resource)
+                emit(ctx, {"removed": resource, "local_only": True})
+
+        return click.command(verb)(command)
+
+    connection.add_command(local_connection("show"))
+    connection.add_command(local_connection("remove"))
     group.add_command(connection)
 
     def connected(verb):
-        @click.option("--project", required=True)
-        @click.option("--zone", required=True)
+        @click.option("--project")
+        @click.option("--zone")
         @click.pass_context
         def command(ctx, resource, project, zone, command=()):
             if verb != "ssh-config" and ctx.obj["json"]:
                 raise InputError("SSH commands cannot use --json; use native process streams")
             if verb == "exec" and not command:
                 raise InputError("exec requires -- COMMAND [ARGS...]")
+            project, zone = scope_for(ctx, project, zone, required=True)
             a = account_for(ctx)
             c = ssh.load(a.alias, kind, project, zone, resource)
             if verb == "ssh-config":
@@ -64,12 +101,13 @@ def connection_commands(group, kind):
         group.add_command(connected(verb))
 
     @group.command("scp")
+    @click.option("--recursive", "-r", is_flag=True, help="Copy directories recursively.")
     @click.argument("source")
     @click.argument("destination")
-    @click.option("--project", required=True)
-    @click.option("--zone", required=True)
+    @click.option("--project")
+    @click.option("--zone")
     @click.pass_context
-    def scp(ctx, source, destination, project, zone):
+    def scp(ctx, source, destination, project, zone, recursive):
         if ctx.obj["json"]:
             raise InputError("scp cannot use --json")
 
@@ -81,7 +119,8 @@ def connection_commands(group, kind):
         if len(endpoints) != 1:
             raise InputError("Exactly one endpoint must be RESOURCE:/remote/path")
         resource = endpoints[0].split(":", 1)[0]
+        project, zone = scope_for(ctx, project, zone, required=True)
         a = account_for(ctx)
         c = ssh.load(a.alias, kind, project, zone, resource)
         paths = [ssh.scp_endpoint(v, resource, c) for v in (source, destination)]
-        ctx.exit(ssh.run(c, scp_paths=paths))
+        ctx.exit(ssh.run(c, scp_paths=paths, recursive=recursive))

@@ -23,7 +23,12 @@ def split_command(command, windows=False):
 
 
 def safe(value, label):
-    if not value or value.startswith("-") or any(c in value for c in "\r\n\x00"):
+    if (
+        not isinstance(value, str)
+        or not value
+        or value.startswith("-")
+        or any(c in value for c in "\r\n\x00")
+    ):
         raise InputError(f"Invalid SSH {label}")
     return value
 
@@ -38,6 +43,9 @@ class Connection:
     ssh_flags: str = ""
 
     def __post_init__(self):
+        for field in ("host", "user", "identity", "proxy_jump", "ssh_flags"):
+            if not isinstance(getattr(self, field), str):
+                raise InputError(f"SSH {field} must be a string")
         if not isinstance(self.ssh_flags, str) or any(
             flag not in "CAXY" for flag in self.ssh_flags
         ):
@@ -50,8 +58,8 @@ class Connection:
             safe(self.user, "user")
             if not re.fullmatch(r"[A-Za-z0-9_.+@=-]+", self.user):
                 raise InputError("Invalid SSH user")
-        if self.port is not None and not 1 <= self.port <= 65535:
-            raise InputError("SSH port must be 1..65535")
+        if self.port is not None and (type(self.port) is not int or not 1 <= self.port <= 65535):
+            raise InputError("SSH port must be an integer in 1..65535")
         if self.identity:
             safe(self.identity, "identity path")
             self.identity = str(Path(self.identity).expanduser())
@@ -169,15 +177,19 @@ def load(account, kind, project, zone, resource):
         raise ConfigurationError(
             "No SSH connection for this account/project/zone/resource; use connection set with the platform-provided SSH command"
         )
-    return Connection(**value)
+    return stored_connection(value)
 
 
-def run(connection, command=(), *, scp_paths=None):
+def run(connection, command=(), *, scp_paths=None, recursive=False):
     tool = "scp" if scp_paths else "ssh"
     binary = shutil.which(tool)
     if not binary:
         raise ConfigurationError(f"{tool} not found; install the OpenSSH client and add it to PATH")
     args = [binary] + connection.options(scp=bool(scp_paths))
+    if recursive:
+        if not scp_paths:
+            raise InputError("Recursive transfer requires scp paths")
+        args.append("-r")
     if scp_paths:
         args += ["--", *scp_paths]
     else:
@@ -201,3 +213,54 @@ def scp_endpoint(value, resource, connection):
     path = Path(value).expanduser()
     # Absolute local paths keep ':' and leading '-' from becoming scp options or remote operands.
     return str(path.absolute())
+
+
+def connections(account, kind, project=None, zone=None):
+    rows = []
+    for encoded, value in read_state().get("connections", {}).items():
+        try:
+            parts = json.loads(encoded)
+            if (
+                not isinstance(parts, list)
+                or len(parts) != 5
+                or not all(isinstance(v, str) for v in parts)
+            ):
+                raise ValueError()
+            owner, workload, p, z, resource = parts
+        except (TypeError, ValueError) as e:
+            raise ConfigurationError("Invalid local connection key") from e
+        if owner != account or workload != kind:
+            continue
+        if project is not None and p != project or zone is not None and z != zone:
+            continue
+        rows.append(
+            dict(
+                account=owner,
+                kind=workload,
+                project=p,
+                zone=z,
+                resource=resource,
+                connection=asdict(stored_connection(value)),
+            )
+        )
+    return sorted(rows, key=lambda r: (r["project"], r["zone"], r["resource"]))
+
+
+def remove(account, kind, project, zone, resource):
+    state = read_state()
+    identity = key(account, kind, project, zone, resource)
+    if identity not in state.get("connections", {}):
+        raise ConfigurationError("No local connection at this account/project/zone/resource")
+    del state["connections"][identity]
+    write_state(state)
+
+
+def stored_connection(value):
+    try:
+        if not isinstance(value, dict):
+            raise TypeError()
+        return Connection(**value)
+    except (TypeError, ValueError, InputError) as e:
+        raise ConfigurationError(
+            "Invalid saved SSH connection; register it again with connection set"
+        ) from e

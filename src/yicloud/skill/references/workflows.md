@@ -1,25 +1,16 @@
-# 端到端任务与稳定资产
+# 平台操作与用户项目
 
-适用于从代码到训练产物、再到服务的连续工作。确定用户希望验收的文件、指标或服务响应，操作闭环以这些结果为准。
+按用户目标选择步骤，已有信息足够时不重新发现资源。研究代码、实验管理、算法与验收指标由用户项目定义，CLI 和 Skill 只负责平台操作。
 
-1. `account current` / `account check` 确认身份，`project list` / `resources zones` 定位范围。
-2. 查询镜像、SKU、配额和节点，明确代码、数据、权重和输出路径。
-3. 用 `workspace scp` 同步代码，或使用镜像/共享盘/S3 准备输入。
-4. 准备 job.json，用 `job create --file job.json --dry-run` 检查，提交并记录返回 JobId。
-5. `job replicas`、`job logs` 和 `job wait` 跟踪；失败时保留请求 ID，查看具体副本，核对训前检查。
-6. 成功后通过 SSH/存储工具检查输出文件、内容、大小及训练指标。任务 Succeeded 本身不证明产物符合需求。
-7. 需要推理时将固定模型版本与部署拓扑写入 serving.json，dry-run 后提交；检查实例和实际服务响应。
-8. 按用户意图停止不再需要的开发机、任务或服务，确认持久盘与版本的保留条件。
+- 使用现有机器：沿用资源或登记连接，按需查 status、exec、复制文件。无需先列全量资源，也不要求新建机器。
+- 创建资源：仅补齐缺失的规格、镜像、挂载和输入输出路径。快捷参数或请求文件均可，dry-run 校验请求后提交并保留返回标识。
+- 运行程序：短命令用 exec；需要托管生命周期时选 Job/Ray。保持用户指定的启动命令和工具，不自动改写研究代码或安装依赖。
+- 观察与排错：区分平台排队、容器状态、进程退出与文件输出；查实例、事件和日志，按需使用 doctor。本地等待超时不代表远端失败，Running 不证明程序取得进展。
+- 文件核验：按用户要求核对路径、内容或程序退出结果；CLI 不定义研究是否成功。
+- 停止与删除：遵循用户的资源和数据保留意图，停止与删除分别处理，不因一次命令完成自动清理开发环境。
 
-```bash
-yicloud --json job create --file job.json
-yicloud --json job status JOB_ID --project example-project --zone example-zone
-yicloud job logs JOB_ID --project example-project --zone example-zone --follow
-yicloud job wait JOB_ID --project example-project --zone example-zone --timeout 1800
-```
+单次 API 查询可以使用固定 --json 信封供脚本组合；无限日志与原生 SSH/SCP 不混用该模式。写请求超时先核对远端状态，不立即重复创建。Ctrl-C 只结束本地等待。
 
-无限日志和 SSH 不能用 --json；一次查询可用固定 JSON 信封串联脚本。创建发生超时先列出远端任务，不立即重复创建。Ctrl-C 只结束本地进程，远端清理由显式 stop/delete 控制。
+命名 context 仅保存账号别名、项目和可用区；详细资产路径可按用户需要记录在项目 YICLOUD.md。凭据、临时访问 URL、动态运行状态不写入资产文档，也不写入 Skill 安装目录。
 
-可选在用户项目维护 YICLOUD.md，记录跨会话仍有效的资产。建议字段：账号别名、项目、地域、可用区；代码/数据/权重/产物路径；固定镜像和资产版本；消费者与清理条件。凭据、临时日志、配额读数和运行状态不进入该文件。只在用户任务需要时创建，不在本 Skill 安装目录保存用户资产。
-
-来源：[官方训练流程](https://docs.yicloud.com/4/1/1/2/1.html)、[部署流程](https://docs.yicloud.com/4/1/2/1/1.html)。
+来源：[官方 OpenAPI 文档](https://api.yicloud.com.cn/)。

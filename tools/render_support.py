@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 catalog = json.loads((ROOT / "src/yicloud/data/catalog.json").read_text(encoding="utf-8"))
 rows = catalog["operations"]
 counts = Counter(op["service"] for op in rows)
-text = "# 公开接口支持矩阵\n\n基准 SDK v0.5.1，核对日期 2026-10-19。implemented-offline 描述实现及离线覆盖，不表示每项经过联机验证。部分真实只读接口及 SSH 验证范围见 [api.md](api.md)；平台写操作未联测。\n\n"
+text = "# 公开接口支持矩阵\n\n基准 SDK v0.5.1，核对日期 2026-10-19。implemented-offline 描述实现及离线覆盖，不表示每项经过联机验证。真实 API、开发机生命周期及 SSH 的具体联测范围见 [api.md](api.md)。\n\n"
 text += "服务统计：" + "，".join(f"{s}: {n}" for s, n in sorted(counts.items())) + "。\n\n"
 text += "| 服务 | 操作 | 方法 / 实际路径 | 模式 | 状态 |\n|---|---|---|---|---|\n"
 for op in rows:

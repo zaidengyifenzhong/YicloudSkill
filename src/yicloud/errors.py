@@ -43,3 +43,25 @@ class UnsupportedProtocol(YicloudError):
 
 class OperationInterrupted(YicloudError):
     kind = "interrupted"
+
+
+class WaitError(YicloudError):
+    def __init__(self, message, *, last_status, observed_at, request_id=None):
+        super().__init__(message, request_id=request_id)
+        self.last_status = last_status
+        self.observed_at = observed_at
+
+    def as_dict(self):
+        return dict(super().as_dict(), last_status=self.last_status, observed_at=self.observed_at)
+
+
+class WaitTimeout(WaitError):
+    kind = "wait_timeout"
+
+
+class RemoteFailed(WaitError):
+    kind = "remote_failed"
+
+
+class UnknownState(WaitError):
+    kind = "unknown_state"

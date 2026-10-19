@@ -17,7 +17,10 @@ def create_params(
     cpu=None,
     memory=None,
     gpu=None,
+    login_shell=False,
 ):
+    if login_shell and kind != "job":
+        raise InputError("Login shell is only supported for job creation")
     if sku_scope not in (None, "public", "tenant", "project"):
         raise InputError("SKU scope must be public, tenant or project")
     if kind not in ("workspace", "job"):
@@ -54,7 +57,7 @@ def create_params(
     if kind == "job":
         if not entrypoint:
             raise InputError("Training shortcut requires --command")
-        spec.update(Command=["sh", "-lc", entrypoint], Env={}, Replicas=1)
+        spec.update(Command=["sh", "-lc" if login_shell else "-c", entrypoint], Env={}, Replicas=1)
         params["TaskSpecs"] = {"t0": spec}
     else:
         if entrypoint:

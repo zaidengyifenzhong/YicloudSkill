@@ -24,4 +24,6 @@ start/stop/delete 对应真实 SDK 接口。日志历史查询使用纳秒整数
 
 GetInferSetTerminal、GetInferSetLogsTail 属于暂缓协议，会明确拒绝；不要把空 HTTP 握手视为已连接。历史日志下载使用 api call inferset DownloadInferSetLogs 并提供 --output。SDK 对部分返回类型使用泛化结构，客户端保留 JSON 数据，不据此推断健康状态；wait 遇到不认识的 Status 会报错。
 
+个人部署使用 `serving list --project example-project --set 'Scope="mine"' --all`；Scope 的其他范围为 group/global，不复用 Workspace 的 Creator。默认只取 20 条，检查 Total 与返回列表，完整清单用 `--all`。按名操作使用 `--lookup-set 'Scope="mine"'`。个人过滤对非空资源尚未联测。
+
 来源：[创建部署服务](https://docs.yicloud.com/4/1/2/1/1.html)、[SDK inferset](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services/inferset)。

@@ -205,3 +205,107 @@ def test_discovery_accepts_scope_from_set_alone(account, monkeypatch):
     )
     assert result.exit_code == 0, result.output
     assert calls[0]["Project"] == "p" and calls[0]["ZoneId"] == "z"
+
+
+@pytest.mark.parametrize(
+    "kind,filter_value,list_action,status_action,row,id_field",
+    [
+        (
+            "workspace",
+            'Creator="user"',
+            "ListWorkspaces",
+            "GetWorkspace",
+            {"Project": "p", "ZoneId": "z", "Name": "dev", "WorkspaceId": "w"},
+            "WorkspaceId",
+        ),
+        (
+            "job",
+            "Self=true",
+            "ListJobs",
+            "GetJob",
+            {"Project": "p", "ZoneId": "z", "Name": "dev", "JobId": "j"},
+            "JobId",
+        ),
+        (
+            "ray",
+            'CreatorId="user-id"',
+            "ListRayJobs",
+            "GetRayJob",
+            {"Namespace": "p", "ZoneId": "z", "DisplayName": "dev", "RayJobName": "r"},
+            "JobName",
+        ),
+        (
+            "serving",
+            'Scope="mine"',
+            "ListInferSet",
+            "GetInferSet",
+            {"Namespace": "p", "ZoneId": "z", "Name": "dev", "ID": "i"},
+            "ID",
+        ),
+    ],
+)
+def test_lookup_filters_are_separate_from_final_request(
+    account, monkeypatch, kind, filter_value, list_action, status_action, row, id_field
+):
+    calls = []
+    key, encoded = filter_value.split("=", 1)
+    value = json.loads(encoded)
+
+    def handler(request):
+        calls.append(request)
+        if request.url.path.endswith(list_action):
+            assert request.url.params[key] == ("true" if value is True else value)
+            assert request.url.params["Project"] == "p"
+            return httpx.Response(200, json={"Code": 0, "Data": {"Items": [row], "Total": 1}})
+        assert request.url.path.endswith(status_action)
+        assert key not in request.url.params
+        assert request.url.params[id_field] in ("w", "j", "r", "i")
+        return httpx.Response(200, json={"Code": 0, "Data": row})
+
+    monkeypatch.setattr(
+        "yicloud.commands.workloads.client_for",
+        lambda _: YicloudClient(account, transport=httpx.MockTransport(handler)),
+    )
+    result = CliRunner().invoke(
+        main,
+        [
+            kind,
+            "status",
+            "dev",
+            "--project",
+            "p",
+            "--zone",
+            "z",
+            "--by-name",
+            "--lookup-set",
+            filter_value,
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        ["--lookup-set", 'Creator="user"'],
+        ["--by-name", "--lookup-set", 'Project="other"'],
+        ["--by-name", "--lookup-set", 'ZoneId="other"'],
+        ["--by-name", "--lookup-set", "Offset=20"],
+        ["--by-name", "--lookup-set", "Limit=1"],
+        ["--by-name", "--lookup-set", "Creator=true"],
+        ["--by-name", "--lookup-set", 'Unknown="x"'],
+    ],
+)
+def test_invalid_lookup_filters_never_send_requests(account, monkeypatch, options):
+    def forbidden(_):
+        pytest.fail("Invalid lookup filters must not send requests")
+
+    monkeypatch.setattr(
+        "yicloud.commands.workloads.client_for",
+        lambda _: YicloudClient(account, transport=httpx.MockTransport(forbidden)),
+    )
+    result = CliRunner().invoke(
+        main, ["workspace", "status", "dev", "--project", "p", "--zone", "z", *options]
+    )
+    assert result.exit_code == 1, result.output

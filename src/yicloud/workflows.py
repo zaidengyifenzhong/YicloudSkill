@@ -1,8 +1,9 @@
 import json
 import time
+from datetime import datetime, timezone
 
 from .catalog import operation, request_schema
-from .errors import InputError, YicloudError
+from .errors import InputError, RemoteFailed, UnknownState, WaitTimeout, YicloudError
 
 WORKLOADS = {
     "workspace": {
@@ -116,8 +117,13 @@ def paginated(client, service, action, params, all_pages=False):
     return result
 
 
-def resolve(client, kind, value, project, zone, by_name=False):
+def resolve(client, kind, value, project, zone, by_name=False, *, lookup=None):
     w = WORKLOADS[kind]
+    lookup = {} if lookup is None else dict(lookup)
+    if lookup and not by_name:
+        raise InputError("Name lookup filters require --by-name")
+    if lookup.keys() & {"Project", "ZoneId", "Limit", "Offset"}:
+        raise InputError("Name lookup filters cannot override scope or pagination")
     if not by_name:
         return value
     if not project or not zone:
@@ -126,6 +132,7 @@ def resolve(client, kind, value, project, zone, by_name=False):
     fields = request_schema(operation(w["service"], w["list"]))["properties"]
     if "ZoneId" in fields:
         params["ZoneId"] = zone
+    params.update(lookup)
     rows = items(paginated(client, w["service"], w["list"], params, True).data)
     fields = LIST_FIELDS[kind]
     matches = [
@@ -201,7 +208,11 @@ def workload_params(
 
 def wait(client, kind, params, *, timeout=1800, interval=5, clock=time.monotonic, sleep=time.sleep):
     w = WORKLOADS[kind]
-    deadline = clock() + timeout
+    if timeout is not None and timeout < 0:
+        raise InputError("Wait timeout must be non-negative or None")
+    if interval <= 0:
+        raise InputError("Wait interval must be positive")
+    deadline = None if timeout is None else clock() + timeout
     success = (
         {"running"} if kind in ("workspace", "serving") else {"succeeded", "complete", "completed"}
     )
@@ -220,19 +231,26 @@ def wait(client, kind, params, *, timeout=1800, interval=5, clock=time.monotonic
     }
     while True:
         result = client.call(w["service"], w["status"], params)
+        observed_at = datetime.now(timezone.utc).isoformat()
         data = result.data or {}
         status = str(
             data.get("Phase", data.get("Status", data.get("JobStatus", "Unknown")))
         ).lower()
+        evidence = dict(last_status=status, observed_at=observed_at, request_id=result.request_id)
         if status in success:
             return result
         if status in {"failed", "stopped", "stopping", "deleted", "selfhealfailed"}:
-            raise YicloudError(f"Remote workload ended with {status}")
+            raise RemoteFailed(f"Remote workload ended with {status}", **evidence)
         if status not in pending:
-            raise YicloudError(f"Unknown workload status: {status}; inspect status/events manually")
-        remaining = deadline - clock()
+            raise UnknownState(
+                f"Unknown workload status: {status}; inspect status/events manually", **evidence
+            )
+        remaining = interval if deadline is None else deadline - clock()
         if remaining <= 0:
-            raise YicloudError("Wait timed out; remote workload continues")
+            raise WaitTimeout(
+                "Local wait timed out; remote workload was not stopped; query status again",
+                **evidence,
+            )
         sleep(min(interval, remaining))
 
 

@@ -26,6 +26,8 @@ cli.py → commands/ → creation.py / workflows.py
 | `protocol.py` | 请求校验与编码、响应解释和文件写入 |
 | `transport.py`、`auth.py` | HTTP 生命周期、有限重试和逐次签名 |
 | `catalog.py`、`data/catalog.json` | 固定 SDK 的操作、字段、类型和协议支持状态 |
+| `context.py`、`time_input.py` | 命名范围解析与无浮点纳秒转换，CLI context 不进入 Python 客户端 |
+| `diagnostics.py` | 只读本地/API/SSH 检查，返回有界证据，不自动修复 |
 | `config.py`、`ssh.py` | 账号与连接配置、本机 SSH 进程 |
 | `skill_install.py` | 包内 Skill 的安装、冲突检查和卸载 |
 
@@ -50,3 +52,5 @@ cli.py → commands/ → creation.py / workflows.py
 文件下载目前先读取完整 HTTP 响应，再原子写入目标，不是流式下载。Skill 安装先预检所有目标再逐目标替换，不提供磁盘故障下的跨目标事务。日志轮询不是可靠归档通道。真实平台验证范围见 [API 说明](../src/yicloud/skill/references/api.md)。
 
 开发、目录生成和包外安装检查见 [贡献指南](../CONTRIBUTING.md)。
+
+Context 仅注入便利命令缺失的范围，不改写请求文件或 api call。使用方式见[开发工具](../src/yicloud/skill/references/developer-tools.md)。

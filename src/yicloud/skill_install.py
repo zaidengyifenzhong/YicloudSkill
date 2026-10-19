@@ -127,3 +127,51 @@ def install(target, path=None, uninstall=False):
             if stage.exists():
                 shutil.rmtree(stage)
     return [str(p) for p in destinations]
+
+
+def status(target, path=None):
+    """Compare installed content with both its ownership manifest and this package."""
+    source = Path(str(files("yicloud").joinpath("skill")))
+    packaged = {
+        p.relative_to(source).as_posix(): digest(p) for p in source.rglob("*") if p.is_file()
+    }
+    fingerprint = hashlib.sha256(
+        json.dumps(packaged, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    rows = []
+    for dest in targets(target, path):
+        row = {
+            "path": str(dest),
+            "state": "missing",
+            "missing": [],
+            "different": [],
+            "local_edits": [],
+            "obsolete": [],
+        }
+        if dest.exists() or dest.is_symlink():
+            try:
+                old = manifest(dest)
+                for name in old.keys() | packaged.keys():
+                    item = checked_path(dest, name)
+                    if not item.is_file():
+                        if name in packaged:
+                            row["missing"].append(name)
+                        continue
+                    actual = digest(item)
+                    if name in old and actual != old[name]:
+                        row["local_edits"].append(name)
+                    if name in packaged and actual != packaged[name]:
+                        row["different"].append(name)
+                    if name not in packaged:
+                        row["obsolete"].append(name)
+                row["state"] = (
+                    "matching"
+                    if not any(row[k] for k in ("missing", "different", "local_edits", "obsolete"))
+                    else "different"
+                )
+            except (ConfigurationError, OSError) as e:
+                row.update(state="conflict", reason=str(e))
+        for k in ("missing", "different", "local_edits", "obsolete"):
+            row[k].sort()
+        rows.append(row)
+    return {"package_skill_path": str(source), "package_digest": fingerprint, "targets": rows}

@@ -254,3 +254,23 @@ def test_ray_name_lookup_rejects_missing_operation_id_and_ambiguity(account):
 @pytest.mark.parametrize("key", ["Data", "GetInferSetLogsQueryRangeData"])
 def test_deployment_known_list_containers(key):
     assert items({key: [{"ID": "fixture"}]}) == [{"ID": "fixture"}]
+
+
+def test_lookup_preserves_filters_across_pages_and_rejects_ambiguity(account):
+    calls = []
+
+    def handler(request):
+        params = request.url.params
+        calls.append(dict(params))
+        assert params["Creator"] == "user"
+        offset = int(params["Offset"])
+        rows = [
+            {"Project": "p", "ZoneId": "z", "Name": "same", "WorkspaceId": str(n)}
+            for n in range(offset, min(offset + 20, 21))
+        ]
+        return httpx.Response(200, json={"Code": 0, "Data": {"Items": rows, "Total": 21}})
+
+    with YicloudClient(account, transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(InputError, match="21 matches"):
+            resolve(client, "workspace", "same", "p", "z", True, lookup={"Creator": "user"})
+    assert [c["Offset"] for c in calls] == ["0", "20"]

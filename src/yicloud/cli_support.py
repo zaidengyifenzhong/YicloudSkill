@@ -7,6 +7,7 @@ import click
 
 from .client import YicloudClient
 from .config import Account
+from .context import effective_scope, selected
 from .errors import ConfigurationError, InputError, OperationInterrupted, YicloudError
 from .output import redact, secret_values
 
@@ -27,7 +28,7 @@ class Root(click.Group):
                 break
             if arg == "--json":
                 json_requested = True
-            if arg in ("--account", "--host", "--region"):
+            if arg in ("--account", "--host", "--region", "--context"):
                 skip_value = True
         # JSON and Chinese API descriptions use UTF-8 even when Windows redirects stdout.
         for stream in (sys.stdout, sys.stderr):
@@ -84,8 +85,30 @@ class Root(click.Group):
             return code
 
 
+def context_for(ctx):
+    if "resolved_context" not in ctx.obj:
+        ctx.obj["resolved_context"] = selected(
+            ctx.obj.get("context_name"), ctx.obj.get("no_context", False)
+        )
+    return ctx.obj["resolved_context"]
+
+
+def scope_for(ctx, project, zone, *, required=False, allowed=("project", "zone")):
+    values = {k: v for k, v in context_for(ctx)["values"].items() if k in allowed}
+    scope, sources = effective_scope(project, zone, values, required=required)
+    ctx.obj.setdefault("effective_context", {}).update(
+        {k: {"value": v, "source": sources[k]} for k, v in scope.items() if v is not None}
+    )
+    return scope["project"], scope["zone"]
+
+
 def account_for(ctx):
-    a = Account.resolve(ctx.obj["alias"], ctx.obj["host"], ctx.obj["region"])
+    chosen = context_for(ctx)
+    alias = ctx.obj["alias"] if ctx.obj["alias"] is not None else chosen["values"].get("account")
+    a = Account.resolve(alias, ctx.obj["host"], ctx.obj["region"])
+    ctx.obj.setdefault("effective_context", {}).update(
+        account=a.alias, host=a.host, region=a.region, name=chosen["name"]
+    )
     ctx.obj["secrets"].extend([a.token, a.public_key, a.secret_key])
     return a
 
@@ -102,6 +125,8 @@ def emit(ctx, data, service=None, action=None, request_id=None, schema=False):
             "data": data,
             "meta": {"service": service, "action": action, "request_id": request_id},
         }
+    if ctx.obj["json"] and ctx.obj.get("effective_context"):
+        data["meta"]["context"] = redact(ctx.obj["effective_context"], ctx.obj.get("secrets", ()))
     click.echo(json.dumps(data, ensure_ascii=False, indent=2))
 
 

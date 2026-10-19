@@ -9,7 +9,7 @@
       "SKUId": "EXAMPLE_SKU",
       "Command": [
         "sh",
-        "-lc",
+        "-c",
         "python /mnt/project/train.py"
       ],
       "Replicas": 1,

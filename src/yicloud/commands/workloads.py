@@ -1,11 +1,15 @@
 """Workload commands with options specific to each operation."""
 
+import time
+
 import click
+from click.core import ParameterSource
 
 from ..catalog import operation, request_schema
-from ..cli_support import assignments, client_for, emit, emit_result, read_json
+from ..cli_support import assignments, client_for, emit, emit_result, read_json, scope_for
 from ..creation import create_params
 from ..errors import InputError
+from ..time_input import duration_ns, timestamp_ns
 from ..workflows import (
     WORKLOADS,
     follow_logs,
@@ -20,15 +24,19 @@ from .discovery import query_command
 
 def resource_options(command):
     command = click.option(
+        "--lookup-set",
+        "lookup_settings",
+        multiple=True,
+        help="List filter FIELD=JSON for --by-name only; not sent to the final operation.",
+    )(command)
+    command = click.option(
         "--dry-run", is_flag=True, help="Preview request; name lookup may read the API."
     )(command)
     command = click.option(
         "--by-name", is_flag=True, help="Resolve an exact name within project and zone."
     )(command)
-    command = click.option(
-        "--zone", required=True, help="Lookup scope; sent only if the API accepts it."
-    )(command)
-    command = click.option("--project", required=True)(command)
+    command = click.option("--zone", help="Lookup scope; sent only if the API accepts it.")(command)
+    command = click.option("--project")(command)
     return click.argument("resource")(command)
 
 
@@ -62,6 +70,9 @@ def create_command(kind):
                 raise InputError("--file and shortcut flags are mutually exclusive")
             params = read_json(file)
         else:
+            shortcuts["project"], shortcuts["zone"] = scope_for(
+                ctx, shortcuts.get("project"), shortcuts.get("zone"), required=True
+            )
             params = create_params(kind, **shortcuts)
         w = WORKLOADS[kind]
         with client_for(ctx) as client:
@@ -87,6 +98,12 @@ def create_command(kind):
             command
         )
         if kind == "job":
+            command = click.option(
+                "--login-shell",
+                is_flag=True,
+                default=None,
+                help="Use sh -lc instead of sh -c for --command.",
+            )(command)
             command = click.option("--command", "entrypoint", help="Container shell command.")(
                 command
             )
@@ -117,6 +134,7 @@ def run_operation(
     zone,
     by_name,
     dry_run,
+    lookup_settings=(),
     file=None,
     settings=(),
     timeout=1800,
@@ -124,6 +142,7 @@ def run_operation(
     follow=False,
     **options,
 ):
+    project, zone = scope_for(ctx, project, zone, required=True)
     w = WORKLOADS[kind]
     action = w["status"] if verb == "wait" else w[verb]
     extra = read_json(file)
@@ -151,7 +170,9 @@ def run_operation(
                 "Use log options for time, limit and instance; direction is managed automatically"
             )
     with client_for(ctx) as client:
-        rid = resolve(client, kind, resource, project, zone, by_name)
+        rid = resolve(
+            client, kind, resource, project, zone, by_name, lookup=assignments(lookup_settings)
+        )
         params = workload_params(kind, verb, rid, project, zone, extra=extra, **options)
         if dry_run:
             emit(ctx, client.dry_run(w["service"], action, params), w["service"], action)
@@ -183,6 +204,7 @@ def action_command(kind, verb):
 
 
 def wait_command(kind):
+    @click.option("--no-timeout", is_flag=True, help="Wait until completion or interruption.")
     @click.option("--timeout", type=click.FloatRange(min=0), default=1800, show_default=True)
     @click.option(
         "--interval",
@@ -192,7 +214,11 @@ def wait_command(kind):
         help="Polling interval in seconds.",
     )
     @click.pass_context
-    def command(ctx, **options):
+    def command(ctx, no_timeout, **options):
+        if no_timeout:
+            if ctx.get_parameter_source("timeout") == ParameterSource.COMMANDLINE:
+                raise InputError("--timeout and --no-timeout are mutually exclusive")
+            options["timeout"] = None
         run_operation(ctx, kind, "wait", **options)
 
     return click.command("wait", help="Wait for the workload to reach its success state.")(
@@ -209,18 +235,24 @@ def logs_command(kind):
         type=click.FloatRange(min=0.1),
         help="Polling seconds with --follow (default: 3).",
     )
-    @click.option(
-        "--start", type=int, help="Unix nanoseconds, inclusive; default: 10 minutes before end."
-    )
-    @click.option("--end", type=int, help="Unix nanoseconds; default: now.")
+    @click.option("--start", help="Unix nanoseconds or RFC3339 with timezone, inclusive.")
+    @click.option("--end", help="Unix nanoseconds or RFC3339 with timezone; default: now.")
+    @click.option("--since", help="Positive duration before end, e.g. 15m; excludes --start.")
     @click.option("--limit", type=click.IntRange(1, 10000), default=200, show_default=True)
     @click.option("--instance", help="Replica filter.")
     @click.pass_context
-    def command(ctx, follow, interval, **options):
+    def command(ctx, follow, interval, since, **options):
         if follow and (ctx.obj["json"] or options["dry_run"] or options["end"] is not None):
             raise InputError("--follow requires logs without --json, --dry-run or --end")
         if interval is not None and not follow:
             raise InputError("--interval requires --follow")
+        if since is not None and options["start"] is not None:
+            raise InputError("--since and --start are mutually exclusive")
+        options["start"] = timestamp_ns(options["start"])
+        options["end"] = timestamp_ns(options["end"])
+        if since is not None:
+            options["end"] = time.time_ns() if options["end"] is None else options["end"]
+            options["start"] = options["end"] - duration_ns(since)
         run_operation(ctx, kind, "logs", follow=follow, interval=interval, **options)
 
     return click.command("logs", help="Read workload logs.")(

@@ -1,6 +1,18 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
+
+- 修复极端日期溢出和损坏 SSH 配置的类型校验，保持 JSON 错误契约。
+- Job 快捷命令改用 `sh -c`；依赖登录初始化的调用须加 `--login-shell`。请求文件 Command 不变。
+- 新增命名 context 管理及 --context/--no-context；便利命令补齐范围，显式参数优先，通用 API 和请求文件不注入字段。
+- 新增 skill status 内容一致性检查、connection list/show/remove、本地/API/SSH 只读 doctor。
+- SCP 新增 --recursive；logs 支持 --since 和带时区 RFC3339，精确保留纳秒。
+- wait 新增 --no-timeout，区分 wait_timeout、remote_failed、unknown_state 并附最后观察证据。
+- 保留普通 token 计数和 tokenizer 输出，继续遮盖凭据与已知秘密；JSON meta 附实际操作上下文。
+- Skill 以平台操作为界，优先复用用户资源，移除固定训练部署流程与个人资源台账。
+
+- 工作负载按名操作新增 `--lookup-set FIELD=JSON`，独立传递 Creator/Self/CreatorId/Scope 等列表过滤，保留跨页查找与同名拒绝。
+- 修正 Skill 的资源池容量示例，补充 SKU 范围、配额组用途、个人列表分页及实测 SSH/云盘语义边界。
 
 - CLI 帮助仅显示当前操作支持的参数；过去被忽略的无关参数现在会报错。Ray 和 serving 创建仅接受请求文件，workspace 不再展示训练命令参数。
 - 查询命令仅提供 API 支持的项目、可用区和分页选项。复杂请求仍可使用 `api call`。

@@ -21,4 +21,6 @@ ray 资源直接用操作参数 JobName；列表的对应字段是 `RayJobName`�
 
 失败时先看 events、instances 和日志；stop/delete 没有对应 start，重新提交需要新的创建请求。wait 以任务 Status 成功终态为准，RayClusterStatus=Running 不能证明作业成功。
 
+个人范围使用 `ray list --project example-project --zone example-zone --set 'CreatorId="PLATFORM_CREATOR_ID"' --all`，CreatorId 是平台创建者 ID，不能套用 Workspace 的 Creator 用户名。默认分页 20 条，检查 Total/Items，完整清单用 `--all`；CLI 的 `--all` 仅遍历分页，不会设置需要管理员权限的 API 字段 All。按名操作可用同样的 `--lookup-set 'CreatorId="PLATFORM_CREATOR_ID"'`。个人过滤对非空资源尚未联测。
+
 来源：[创建 Ray 任务](https://docs.yicloud.com/4/1/1/3/1.html)、[SDK ray](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services/ray)。

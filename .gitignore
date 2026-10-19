@@ -1,11 +1,42 @@
+# Python environments and generated files
 .venv/
+venv/
 __pycache__/
 *.py[cod]
 *.egg-info/
 dist/
 build/
+wheelhouse/
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Local credentials, configuration, and private asset records
 YICLOUD.md
+/AGENTS.md
 .env
+.env.*
+!.env.example
+!.env.*.example
+/.local/
+/.yicloud/
+/.aws/
+/.ssh/
+/.codex/
+/.claude/
+/yicloud-config*.json
+*.pem
+*.key
+
+# Editor and OS files
+.idea/
+.vscode/
+*.swp
+*.swo
 .DS_Store

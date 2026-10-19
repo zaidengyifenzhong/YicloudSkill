@@ -53,6 +53,8 @@ with tempfile.TemporaryDirectory(prefix="yicloud-wheel-") as scratch:
         return json.loads(result.stdout)
 
     assert len(call("--json", "api", "list")["data"]) == 227
+    sku = call("--json", "api", "describe", "mc", "ListSKUs")["data"]
+    assert sku["definitions"] == {}  # This request has no referenced types.
     assert call("--json", "api", "describe", "job", "CreateJob")["data"]["schema"]["required"]
     # Exercise packaged command adapters, pure creation rules and the client protocol together.
     for kind, scope in (("workspace", "project"), ("job", "tenant")):
@@ -108,6 +110,56 @@ with tempfile.TemporaryDirectory(prefix="yicloud-wheel-") as scratch:
     skill = root / "installed-skill"
     call("--json", "skill", "install", "--target", "codex", "--path", str(skill))
     assert (skill / "SKILL.md").is_file()
+    installed = call("--json", "skill", "status", "--target", "codex", "--path", str(skill))["data"]
+    assert installed["targets"][0]["state"] == "matching"
+    assert installed["version"]  # Taken from package metadata, not a second version constant.
+    result = call(
+        "--json",
+        "job",
+        "logs",
+        "fixture",
+        "--project",
+        "p",
+        "--zone",
+        "z",
+        "--since",
+        "15m",
+        "--end",
+        "1970-01-01T01:00:00.123456789Z",
+        "--dry-run",
+    )
+    query = {p["name"]: p["value"] for p in result["data"]["query"]}
+    assert int(query["Start"]) == 2700123456789
+    # Fake local credentials exercise context plumbing, never network access.
+    config = root / "config.json"
+    config.write_text(
+        json.dumps({"accounts": {"fixture": {}}, "connections": {}}), encoding="utf-8"
+    )
+    try:
+        call(
+            "--json",
+            "context",
+            "set",
+            "lab",
+            "--account",
+            "fixture",
+            "--project",
+            "p",
+            "--zone",
+            "z",
+        )
+        call("--json", "context", "use", "lab")
+        assert call("--json", "context", "show")["data"]["values"]["project"] == "p"
+        assert (
+            call("--json", "job", "stop", "fixture", "--dry-run")["data"]["body"]["Project"] == "p"
+        )
+        call("--json", "workspace", "connection", "set", "dev", "--ssh-command", "ssh user@host")
+        assert len(call("--json", "workspace", "connection", "list")["data"]) == 1
+        call("--json", "workspace", "connection", "remove", "dev")
+        assert call("--json", "workspace", "connection", "list")["data"] == []
+    finally:
+        config.unlink()
+
     # Templates must work without a source checkout or user account.
     for kind in ("workspace", "job", "ray", "serving"):
         template = skill / "assets" / "examples" / f"{kind}.json"
