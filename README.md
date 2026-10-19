@@ -164,7 +164,7 @@ with YicloudClient.from_account("research") as client:
 
 后续 Agent 的角色分工、任务依赖、联机验证与发布流程见 [Agent 交付流程](docs/agent-workflow.md)，可交接的任务清单见 [agent-tasks.yaml](docs/agent-tasks.yaml)。流程从当前已实现版本继续，区分首版交付与额外真实工作流验证。
 
-[架构设计](docs/architecture.md)说明 CLI 命令组、工作负载规则、公共客户端、平台协议与 HTTP 传输的依赖边界，以及本次重构的兼容性约束。
+[架构设计](docs/architecture.md)说明 CLI 命令组、工作负载规则、公共客户端、平台协议与 HTTP 传输的依赖边界，以及本次重构的兼容性约束。[独立执行记录](docs/refactor-review.md)列出各角色实际发现、修复、验收证据和保留限制。
 
 ```bash
 uv venv --python 3.12

@@ -1,9 +1,16 @@
-# 人工/Agent 共用任务清单；不是可执行调度程序。状态为设计时快照。
+# 人工/Agent 共用任务清单；不是可执行调度程序。状态为本轮 release_v1 的执行收据。
 schema_version: 1
 as_of: '2026-10-19'
 baseline_sha: 2ab800758489bcc563244bad2718341d561ad008
 workflow: agent-workflow.md
 selected_profile: release_v1
+execution:
+  reviewed_code_sha: 67f738619b8ac6597f0670debd0e54ac554261e5
+  evidence: refactor-review.md
+  ci_run: https://github.com/zaidengyifenzhong/YicloudSkill/actions/runs/39223186075
+  mac_validated_candidate: 67f738619b8ac6597f0670debd0e54ac554261e5
+  cleanup: not_needed
+  deferred_scope: 平台写操作及额外认证未联测，保留首版验证边界
 max_concurrent_roles: 4
 max_live_write_executors: 1
 statuses: [todo, ready, in_progress, needs_input, failed, cleanup_pending, verified, deferred]
@@ -79,7 +86,7 @@ tasks:
   - id: T13
     title: 独立代码 Review 与修复复验
     owner: review
-    status: in_progress
+    status: verified
     depends_on: [T03]
     effects: [local_read]
     acceptance:
@@ -90,7 +97,7 @@ tasks:
   - id: T14
     title: 独立质疑文档与实现的一致性
     owner: documentation_critic
-    status: todo
+    status: verified
     depends_on: [T13]
     profile_dependencies:
       live_core: [T05, T06, T07, T08]
@@ -157,7 +164,7 @@ tasks:
   - id: T09
     title: 独立包与 Skill 验收
     owner: verification
-    status: todo
+    status: verified
     depends_on: [T14]
     effects: [local_read, isolated_install, read_api]
     acceptance:
@@ -169,7 +176,7 @@ tasks:
   - id: T10
     title: 提交、推送、CI 与 Mac 安装核验
     owner: coordinator
-    status: todo
+    status: verified
     depends_on: [T09]
     effects: [git_push, user_install]
     acceptance:

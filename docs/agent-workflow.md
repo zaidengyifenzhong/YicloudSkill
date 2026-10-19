@@ -1,6 +1,6 @@
 # YicloudSkill Agent 交付流程
 
-这份流程供后续 Agent 接手本仓库：先确认已有成果，再处理真实平台差异，按选定范围补充验证，最后交付可安装的 CLI、Python 客户端和 Skill。任务依赖与初始状态保存在 [agent-tasks.yaml](agent-tasks.yaml)；它是任务清单，尚未接入自动调度器。
+这份流程供后续 Agent 接手本仓库：先确认已有成果，再处理真实平台差异，按选定范围补充验证，最后交付可安装的 CLI、Python 客户端和 Skill。任务依赖与执行状态保存在 [agent-tasks.yaml](agent-tasks.yaml)；它是任务清单，尚未接入自动调度器。
 
 ## 当前起点与完成范围
 
