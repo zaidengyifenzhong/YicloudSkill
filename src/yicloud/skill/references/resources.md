@@ -22,6 +22,8 @@ SKU 查询的 Scope 省略时默认 public；仅传 Project 不会切换到项�
 
 SKU 和配额组是不同资源模式；不要同时设置 SKU 与 CPU/Memory/GPU/QuotaGroup。配额表示允许使用的上限，不是最小可创建规格，也不能证明节点现在空闲。`GetPredict` 是调度预测，不是资源预留或创建承诺。查询与提交之间容量可能变化。
 
+本平台 H200 默认不连外网，按离线运行准备，不在 GPU 任务启动时依赖 pip、apt 或公网模型下载；需要定制环境时先在可联网 CPU 开发机配置再制作镜像，见[环境准备](assets.md#离线-gpu-环境准备)。只有用户或目标资源的明确配置确认可联网时才调整此前提，其他 GPU 按各自资源池判断。无外网不等于无内网；分别核对目标机器对平台镜像仓库、共享存储及所需服务的可达性。
+
 默认资源参数直接作为 ID；显示名需 `--by-name` 并明确项目、可用区，所有页精确匹配，无法唯一确定时报告候选。需要与列表相同的过滤条件时用独立的 `--lookup-set FIELD=JSON`（可重复）；它只用于名称查找，不传给最终操作。`--set` 仍仅用于最终操作，查找过滤不可覆盖 Project/ZoneId/Limit/Offset。SSH 则使用本地连接登记时的资源标识。按 ID 的 dry-run 不联网；`--by-name --dry-run` 会先执行只读查询解析 ID，但不提交写请求。
 
 来源：[SDK mc](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services/mc)、[官方管理中心](https://docs.yicloud.com/)。
