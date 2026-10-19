@@ -292,3 +292,45 @@ def test_cli_unicode_json_under_legacy_pipe_encoding(tmp_path):
     )
     assert result.returncode == 0, result.stderr.decode("utf-8")
     assert json.loads(result.stdout.decode("utf-8"))["ok"]
+
+
+def test_platform_ssh_command_combined_flags_roundtrip():
+    c = Connection.parse("ssh -CAXY ws-example.fixture.dev.ws@gateway.example -p 2202")
+    assert c.ssh_flags == "CAXY"
+    assert c.port == 2202 and c.user == "ws-example.fixture.dev.ws"
+    assert c.options()[:4] == ["-C", "-A", "-X", "-Y"]
+    assert c.options(scp=True)[:2] == ["-C", "-A"]
+    assert "-X" not in c.options(scp=True) and "-Y" not in c.options(scp=True)
+    config = c.config("fixture")
+    assert "Compression yes" in config and "ForwardAgent yes" in config
+    assert "ForwardX11 yes" in config and "ForwardX11Trusted yes" in config
+    separate = Connection.parse("ssh -Y -C -A -X gateway.example")
+    assert separate.ssh_flags == "CAXY"
+    with pytest.raises(InputError):
+        Connection.parse("ssh -CAXYZ user@gateway.example")
+    with pytest.raises(InputError):
+        Connection("gateway.example", ssh_flags="-oProxyCommand=bad")
+
+
+def test_platform_ssh_flags_cli_saved_with_scope():
+    result = CliRunner().invoke(
+        main,
+        [
+            "--json",
+            "workspace",
+            "connection",
+            "set",
+            "fixture",
+            "--project",
+            "fixture-project",
+            "--zone",
+            "fixture-zone",
+            "--ssh-command",
+            "ssh -CAXY ws-example.fixture.dev.ws@gateway.example -p 2202",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert (
+        load("environment", "workspace", "fixture-project", "fixture-zone", "fixture").ssh_flags
+        == "CAXY"
+    )

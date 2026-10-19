@@ -2,7 +2,7 @@
 
 让 Codex、Claude Code 等 Agent 通过可复现命令管理仪电智算云。项目包含同一安装包中的 **yicloud CLI、同步 Python 客户端与按任务组织的 Skill**。
 
-首版基于官方 Go SDK **v0.5.1**，固定提交 `8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5`，文档核对于 **2026-10-19**。227 个公开请求操作全部进入目录，225 个普通 HTTP 操作可调用，网页终端和 WebSocket 日志尾随 2 项明确暂缓。**目前仅完成离线合同与模拟工作流验证，尚未用真实平台账号验证认证、响应形状、资源调度或 SSH 网关。**
+首版基于官方 Go SDK **v0.5.1**，固定提交 `8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5`，文档核对于 **2026-10-19**。227 个公开请求操作全部进入目录，225 个普通 HTTP 操作可调用，网页终端和 WebSocket 日志尾随 2 项明确暂缓。**HTTP API 目前仅完成离线合同与模拟工作流验证，尚未验证真实 API 认证、响应形状与资源调度。标准 SSH 已在 Apple Silicon Mac 上连接真实 Yicloud 开发机，验证远程执行、标准输入、退出码和 SFTP 文件往返。**
 
 ## 安装
 
@@ -119,6 +119,10 @@ yicloud workspace ssh-config devbox --project example-project --zone example-zon
 
 支持 Host 别名和 ProxyJump，保留完整用户名和主机密钥校验。导入命令只解析支持的参数，不执行原始字符串。exec 继承 stdin 并传递远端退出码；scp 使用现代 OpenSSH 默认 SFTP（建议 OpenSSH 9+）。ssh-config 输出片段，不修改 ~/.ssh/config。训练实例启用 SSH 并登记连接后也支持 job ssh/exec/scp/ssh-config。JSON 不可与 SSH 或无限日志跟随混用。参见[开发机与 SSH](src/yicloud/skill/references/workspace-ssh.md)。
 
+2026-10-19 Mac 实机验证：macOS 26.7.1 / arm64、OpenSSH 10.3，使用登记的本机密钥连接真实开发机；CLI 接受平台复制的 `ssh -CAXY ... -p 2202`，验证 UTF-8 标准输入、远端退出码 23、含空格路径的 SFTP 上传下载，文件 SHA-256 一致，远端临时文件已清理。此记录不代表所有镜像、网关或 HTTP API 已验证。
+
+部分容器镜像的登录初始化脚本可能无法由 `sh` 解析。本次镜像的 `sh -lc` 在 `/etc/profile.d/ssh-init.sh` 报语法错误，直接执行命令和 `sh -c` 正常；应将镜像脚本错误与 SSH 连接错误区分，不要自动修改用户镜像。
+
 ## Python 客户端
 
 ```python
@@ -143,10 +147,10 @@ with YicloudClient.from_account("research") as client:
 | SDK 全部公开请求操作 | 227 项收录，逐项见[支持矩阵](src/yicloud/skill/references/support.md) |
 | 普通 HTTP / 管理员写操作 | 225 项，含直接文件存储响应和日志下载 |
 | workspace / job / ray / inferset | 生命周期、资源定位、等待、日志与实例等便利命令 |
-| 标准 SSH | 本机 OpenSSH，需用户提供实际网关连接信息 |
+| 标准 SSH | 已通过 Mac 实机连接、exec 和 SFTP 验证，需用户提供实际网关连接信息 |
 | 对象存储 | bucket 管理；对象传输另接官方 S3 工具工作流 |
 | WebSocket 尾随 / 网页终端 | 2 项暂缓，明确报错；日志自动刷新用轮询 |
-| 真实平台兼容性 | 未验证；测试响应均为合成数据 |
+| 真实平台兼容性 | SSH 已通过一次真实开发机验证；HTTP API 尚未验证，自动测试响应均为合成数据 |
 
 官方 [文档](https://docs.yicloud.com/) 说明流程，[固定 Go SDK](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5) 定义合同。fs/alpha 实际使用 yifs 路径且存在函数名/路径差异；标量数组编码为重复查询键以避免 SDK 丢项；Ray 历史日志保留直接 JSON；部署下载按文件处理。差异和维护方法见 [API 说明](src/yicloud/skill/references/api.md)。
 

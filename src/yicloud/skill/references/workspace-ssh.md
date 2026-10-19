@@ -24,8 +24,10 @@ yicloud workspace scp devbox:/mnt/project/result.json ./result.json --project ex
 yicloud workspace ssh-config devbox --project example-project --zone example-zone
 ```
 
-导入支持 `-p/-i/-l/-J` 和已有 Host 别名，其他参数拒绝且原始命令不执行。需要 ProxyJump 时传 `--proxy-jump jump-host`。ssh-config 只输出片段，用户自行合并；身份文件需存在，保留主机密钥校验。exec 继承 stdin/stdout/stderr 并返回远端退出码。scp 使用现代 OpenSSH 的默认 SFTP 传输，支持路径空格；不启用旧 SCP shell 协议。
+导入支持 `-p/-i/-l/-J`、`-C/-A/-X/-Y`（也可组合为 `-CAXY`）和已有 Host 别名，其他参数拒绝且原始命令不执行。压缩、Agent 和 X11 转发选项按导入命令显式保存；SCP 仅复用压缩与 Agent 选项。需要 ProxyJump 时传 `--proxy-jump jump-host`。ssh-config 只输出片段，用户自行合并；身份文件需存在，保留主机密钥校验。exec 继承 stdin/stdout/stderr 并返回远端退出码。scp 使用现代 OpenSSH 的默认 SFTP 传输，支持路径空格；不启用旧 SCP shell 协议。
 
 连接按账号/工作负载/项目/可用区/资源标识保存；名称或实例变化需重新登记。训练实例启用 SSH 且获得连接命令后，可使用相同的 `job connection set INSTANCE ...`、`job ssh/exec/scp/ssh-config`。登记的 resource 是连接键；同一任务多个实例应使用不同键。不从 API 的 Pod IP 推测网关地址。
 
-来源：[官方 SSH 教程](https://docs.yicloud.com/4/1/1/1/5.html)、[SDK workspace](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services/workspace)。核对日期 2026-10-19；平台 SSH 未联机验证。
+来源：[官方 SSH 教程](https://docs.yicloud.com/4/1/1/1/5.html)、[SDK workspace](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services/workspace)。核对日期 2026-10-19；已在 Apple Silicon Mac 上通过真实开发机的 SSH 连接、exec、UTF-8 stdin、退出码和含空格路径 SFTP 往返验证，临时文件已清理。HTTP API 仍未联机验证。
+
+若远程登录 shell 的初始化脚本报错，先用 `workspace exec ... -- uname -s` 或 `sh -c` 区分网络连接与镜像脚本故障。本次验证镜像的 `sh -lc` 因 /etc/profile.d/ssh-init.sh 使用了不兼容语法而失败；不要因此重建开发机或自动改写用户镜像。

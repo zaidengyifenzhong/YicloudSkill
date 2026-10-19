@@ -35,8 +35,14 @@ class Connection:
     port: int | None = None
     identity: str = ""
     proxy_jump: str = ""
+    ssh_flags: str = ""
 
     def __post_init__(self):
+        if not isinstance(self.ssh_flags, str) or any(
+            flag not in "CAXY" for flag in self.ssh_flags
+        ):
+            raise InputError("Unsupported SSH flags; supported: C A X Y")
+        self.ssh_flags = "".join(flag for flag in "CAXY" if flag in self.ssh_flags)
         safe(self.host, "host")
         if not re.fullmatch(r"[A-Za-z0-9_.:\[\]-]+", self.host):
             raise InputError("Invalid SSH host or alias")
@@ -77,8 +83,12 @@ class Connection:
                     values[key] = int(value) if key == "port" else value
                 except ValueError as e:
                     raise InputError("SSH port must be an integer") from e
+            elif arg.startswith("-") and len(arg) > 1 and all(flag in "CAXY" for flag in arg[1:]):
+                values["ssh_flags"] = values.get("ssh_flags", "") + arg[1:]
             elif arg.startswith("-") or target is not None:
-                raise InputError(f"Unsupported SSH argument: {arg}; supported: -p -i -l -J")
+                raise InputError(
+                    f"Unsupported SSH argument: {arg}; supported: -p -i -l -J -C -A -X -Y"
+                )
             else:
                 target = arg
         if not target:
@@ -96,6 +106,9 @@ class Connection:
 
     def options(self, scp=False):
         result = []
+        for flag in self.ssh_flags:
+            if not scp or flag in "CA":
+                result.append("-" + flag)
         if self.port is not None:
             result += ["-P" if scp else "-p", str(self.port)]
         if self.identity:
@@ -125,6 +138,14 @@ class Connection:
             if value:
                 escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
                 lines.append(f'    {key} "{escaped}"')
+        if "C" in self.ssh_flags:
+            lines.append("    Compression yes")
+        if "A" in self.ssh_flags:
+            lines.append("    ForwardAgent yes")
+        if "X" in self.ssh_flags or "Y" in self.ssh_flags:
+            lines.append("    ForwardX11 yes")
+        if "Y" in self.ssh_flags:
+            lines.append("    ForwardX11Trusted yes")
         if self.identity:
             lines.append("    IdentitiesOnly yes")
         return "\n".join(lines) + "\n"

@@ -589,7 +589,7 @@ def connection_commands(group, kind):
     @click.option(
         "--ssh-command",
         required=True,
-        help="Parsed, never executed. Supports -p -i -l -J and Host aliases.",
+        help="Parsed, never executed. Supports -p -i -l -J, -CAXY and Host aliases.",
     )
     @click.option("--identity")
     @click.option("--proxy-jump")

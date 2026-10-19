@@ -8,3 +8,4 @@ build/
 .ruff_cache/
 YICLOUD.md
 .env
+.DS_Store
