@@ -25,4 +25,4 @@ go run tools/catalog.go /path/to/openapi-sdk-go > catalog.next.json
 python tools/check_catalog.py catalog.next.json
 ```
 
-生成器用 Go 标准库 AST 解析真实 client.Get/Post/GetRaw、路径表达式、请求模型、JSON/form/binding 标签和常量；拒绝非固定提交、已修改 SDK、无法解析路径/类型/公开操作。特殊响应覆盖在生成器中显式标注。检查 diff 后替换 src/yicloud/data/catalog.json，并用 `python tools/render_support.py` 更新支持矩阵；运行 pytest、Ruff、Skill 验证和 wheel 安装检查。更新基准时同时调整版本、SHA、来源、测试和差异说明，不能只改目录的头部版本号。
+生成器用 Go 标准库 AST 解析真实 client.Get/Post/GetRaw、路径表达式、请求模型、JSON/form/binding 标签和常量；拒绝非固定提交、已修改 SDK、无法解析路径/类型/公开操作。特殊响应覆盖在生成器中显式标注；无 binding 标签的明确枚举由 tools/catalog_overrides.json 补齐，并记录 SDK 注释出处。检查 diff 后替换 src/yicloud/data/catalog.json，并用 `python tools/render_support.py` 更新支持矩阵；运行 pytest、Ruff、Skill 验证和 wheel 安装检查。更新基准时同时调整版本、SHA、来源、测试和差异说明，不能只改目录的头部版本号。

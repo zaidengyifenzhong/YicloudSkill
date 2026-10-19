@@ -197,3 +197,10 @@ def test_dry_run_no_auth_or_transport(account):
     with client(Account(), handler) as c:
         result = c.dry_run("job", "StopJob", JOB)
     assert result["body"] == JOB and "headers" not in result
+
+
+def test_sku_type_is_compute_class_not_visibility_scope():
+    op = operation("mc", "ListSKUs")
+    validate(op, {"SKUType": "gpu", "Scope": "public"})
+    with pytest.raises(InputError, match="one of"):
+        validate(op, {"SKUType": "public"})

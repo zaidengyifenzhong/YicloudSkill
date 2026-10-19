@@ -299,6 +299,42 @@ func main() {
 	sort.Slice(ops, func(i, j int) bool {
 		return fmt.Sprint(ops[i]["service"], ops[i]["action"]) < fmt.Sprint(ops[j]["service"], ops[j]["action"])
 	})
+	// Curated SDK comment constraints that are not present in binding tags.
+	data, err := os.ReadFile("tools/catalog_overrides.json")
+	if err != nil {
+		panic(err)
+	}
+	var overrides map[string]struct {
+		Source string       `json:"source"`
+		Fields map[string]M `json:"fields"`
+	}
+	if err := json.Unmarshal(data, &overrides); err != nil {
+		panic(err)
+	}
+	applied := 0
+	for _, op := range ops {
+		key := op["service"].(string) + "/" + op["action"].(string)
+		if override, ok := overrides[key]; ok {
+			if override.Source == "" {
+				fail("override lacks source: %s", key)
+			}
+			request := defs[op["service"].(string)].(M)[op["request"].(string)].(M)
+			props := request["properties"].(M)
+			for name, constraints := range override.Fields {
+				field, ok := props[name].(M)
+				if !ok {
+					fail("override references missing field %s/%s", key, name)
+				}
+				for key, value := range constraints {
+					field[key] = value
+				}
+			}
+			applied++
+		}
+	}
+	if applied != len(overrides) {
+		fail("unapplied catalog overrides")
+	}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(M{"sdk_version": "v0.5.1", "sdk_commit": "8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5", "checked": "2026-10-19", "operations": ops, "definitions": defs}); err != nil {

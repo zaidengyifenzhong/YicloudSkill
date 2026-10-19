@@ -278,3 +278,17 @@ def test_windows_ssh_import_preserves_backslashes_and_spaces():
     assert split_command(
         r'ssh -i "C:\Users\Example User\.ssh\id_ed25519" -p 2202 user@host', windows=True
     ) == ["ssh", "-i", r"C:\Users\Example User\.ssh\id_ed25519", "-p", "2202", "user@host"]
+
+
+def test_cli_unicode_json_under_legacy_pipe_encoding(tmp_path):
+    import sys
+
+    env = dict(os.environ, PYTHONIOENCODING="cp1252", YICLOUD_CONFIG=str(tmp_path / "state.json"))
+    result = subprocess.run(
+        [sys.executable, "-m", "yicloud", "--json", "api", "describe", "job", "CreateJob"],
+        env=env,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr.decode("utf-8")
+    assert json.loads(result.stdout.decode("utf-8"))["ok"]

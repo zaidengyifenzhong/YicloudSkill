@@ -23,6 +23,7 @@ with tempfile.TemporaryDirectory(prefix="yicloud-installer-") as directory:
     env = dict(os.environ)
     env.update(
         CODEX_HOME=str(scratch / "codex"),
+        PYTHONUTF8="1",
         YICLOUD_CONFIG=str(scratch / "config.json"),
         UV_TOOL_DIR=str(scratch / "tools"),
         UV_TOOL_BIN_DIR=str(scratch / "bin"),

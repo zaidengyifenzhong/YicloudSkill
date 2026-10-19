@@ -3,6 +3,6 @@ recursive-include licenses *.txt
 recursive-include src/yicloud/data *.json
 recursive-include src/yicloud/skill *
 include install.sh install.ps1
-recursive-include tools *.py *.go
+recursive-include tools *.py *.go *.json
 recursive-include tests *.py *.json
 recursive-include examples *.json

@@ -12790,12 +12790,21 @@
           "SKUType": {
             "binding": "required",
             "description": "SKU类型：cpu或gpu",
+            "enum": [
+              "cpu",
+              "gpu"
+            ],
             "nullable": true,
             "type": "string"
           },
           "Scope": {
             "binding": "omitempty",
             "description": "SKU可见范围：public(公域)、tenant(租域)、project(项目域)，空默认为public",
+            "enum": [
+              "public",
+              "tenant",
+              "project"
+            ],
             "nullable": true,
             "type": "string"
           },

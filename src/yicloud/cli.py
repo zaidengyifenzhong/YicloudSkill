@@ -1,4 +1,5 @@
 import json
+import sys
 from dataclasses import asdict
 from pathlib import Path
 
@@ -18,6 +19,13 @@ class Root(click.Group):
     def main(self, *args, **kwargs):
         standalone = kwargs.pop("standalone_mode", True)
         self.active_context = None
+        # JSON and Chinese API descriptions use UTF-8 even when Windows redirects stdout.
+        for stream in (sys.stdout, sys.stderr):
+            if hasattr(stream, "reconfigure"):
+                try:
+                    stream.reconfigure(encoding="utf-8")
+                except (OSError, ValueError):
+                    pass
         try:
             code = super().main(*args, standalone_mode=False, **kwargs)
         except (YicloudError, OSError, ValueError, click.ClickException) as e:
@@ -115,7 +123,7 @@ def assignments(values):
             result[key] = json.loads(text)
         except ValueError as e:
             raise InputError(
-                "--set requires a JSON value, e.g. --set 'Limit=20' or --set 'SKUType=\"public\"'"
+                "--set requires a JSON value, e.g. --set 'Limit=20' or --set 'SKUType=\"gpu\"'"
             ) from e
     ctx = click.get_current_context(silent=True)
     if ctx and ctx.obj is not None:

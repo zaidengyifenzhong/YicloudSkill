@@ -7,7 +7,7 @@ yicloud account current
 yicloud project list
 yicloud resources zones
 yicloud project quota --project example-project
-yicloud resources skus --project example-project --zone example-zone --set 'SKUType="public"'
+yicloud resources skus --project example-project --zone example-zone --set 'SKUType="gpu"'
 yicloud resources quota-groups --project example-project --zone example-zone
 yicloud resources nodes --project example-project --zone example-zone
 yicloud resources available --project example-project --zone example-zone --set 'QuotaGroup="example-quota"'

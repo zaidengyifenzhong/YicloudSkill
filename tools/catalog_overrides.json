@@ -1,0 +1,9 @@
+{
+  "mc/ListSKUs": {
+    "source": "services/mc/models.go:1037-1046; SDK comments define SKUType and Scope",
+    "fields": {
+      "SKUType": {"enum": ["cpu", "gpu"]},
+      "Scope": {"enum": ["public", "tenant", "project"]}
+    }
+  }
+}

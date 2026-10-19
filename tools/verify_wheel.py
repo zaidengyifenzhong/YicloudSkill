@@ -36,7 +36,13 @@ with tempfile.TemporaryDirectory(prefix="yicloud-wheel-") as scratch:
 
     def call(*values):
         result = subprocess.run(
-            [str(cli), *values], cwd=root, env=env, text=True, capture_output=True, check=True
+            [str(cli), *values],
+            cwd=root,
+            env=env,
+            text=True,
+            encoding="utf-8",
+            capture_output=True,
+            check=True,
         )
         return json.loads(result.stdout)
 

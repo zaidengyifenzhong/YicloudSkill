@@ -52,7 +52,7 @@ yicloud account use research
 yicloud account check
 yicloud project list
 yicloud resources zones
-yicloud resources skus --project example-project --zone example-zone --set 'SKUType="public"'
+yicloud resources skus --project example-project --zone example-zone --set 'SKUType="gpu"'
 yicloud resources quota-groups --project example-project --zone example-zone
 ```
 
