@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yicloud-skill"
-version = "0.3.0"
+version = "0.3.1"
 description = "Yicloud API client, CLI and agent skill"
 readme = "README.md"
 requires-python = ">=3.10"
