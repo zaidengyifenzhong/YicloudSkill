@@ -8,6 +8,7 @@ from urllib.parse import parse_qsl
 import httpx
 
 from .config import Account
+from .catalog import catalog
 from .errors import InputError, YicloudError
 from .output import redact, secret_values
 from .protocol import decode_response, prepare_request
@@ -53,6 +54,29 @@ class YicloudClient:
             "query": [{"name": k, "value": v} for k, v in parse_qsl(query, keep_blank_values=True)],
             "body": json.loads(body) if body else None,
             "validation": "passed",
+            "validation_scope": "local_pinned_sdk_request",
+            "validation_source": {
+                "sdk_version": catalog()["sdk_version"],
+                "sdk_commit": catalog()["sdk_commit"],
+            },
+            "checks": {
+                "required_fields": "passed",
+                "field_types": "passed",
+                "declared_enums": "passed",
+                "unknown_fields": ("allowed" if kwargs.get("allow_unknown_fields") else "rejected"),
+                "request_encoding": "passed",
+            },
+            "limitations": {
+                "authentication_and_permissions": "not_checked",
+                "resource_capacity_and_quota": "not_checked",
+                "image_and_storage_accessibility": "not_checked",
+                "platform_business_rules": "not_checked",
+                "runtime_readiness": "not_checked",
+                "network": (
+                    "Request validation sends no HTTP requests; preceding CLI resource "
+                    "lookup or scope checks may perform reads."
+                ),
+            },
             "read_only": op["read_only"],
             "status": op["status"],
         }

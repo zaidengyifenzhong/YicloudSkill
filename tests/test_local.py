@@ -101,7 +101,7 @@ def test_skill_conflict_install_upgrade_uninstall_keeps_config(tmp_path):
     write_state({"accounts": {"a": {"token": "fixture"}}})
     install("codex", dest)
     assert (dest / "SKILL.md").is_file()
-    assert (dest / "references/api.md").is_file()
+    assert (dest / "references/diagnostics/api.md").is_file()
     install("codex", dest)
     install("codex", dest, True)
     assert not dest.exists()
@@ -404,7 +404,7 @@ def test_interrupted_write_does_not_claim_remote_resource_is_unchanged(monkeypat
             "workspace",
             "CreateWorkspace",
             "--file",
-            "src/yicloud/skill/assets/examples/workspace.json",
+            "tests/fixtures/requests/workspace.json",
         ],
     )
     assert received == ["POST"] and result.exit_code == 130

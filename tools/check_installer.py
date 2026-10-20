@@ -80,6 +80,6 @@ with tempfile.TemporaryDirectory(prefix="yicloud-installer-") as directory:
         ]
     subprocess.run(command, env=env, cwd=scratch, check=True)
     assert (scratch / "codex/skills/yicloud/SKILL.md").is_file()
-    assert (scratch / "codex/skills/yicloud/references/api.md").is_file()
+    assert (scratch / "codex/skills/yicloud/references/diagnostics/api.md").is_file()
     assert not (scratch / "config.json").exists()
 print(f"{args.manager} installer and Codex skill verified in isolated directories")

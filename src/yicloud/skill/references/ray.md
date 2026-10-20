@@ -1,26 +1,43 @@
-# Ray 任务
+# Ray 作业与 Worker 调整
 
-适用于 Ray 分布式作业。先确认镜像含匹配 Ray 版本，配置 HeadSpec/WorkerGroups、挂载和 Entrypoint，dry-run 后创建。按需复制 [ray.json](../assets/examples/ray.json) 或 [workers.json](../assets/examples/workers.json) 到用户项目，替换其中占位符。
+## 何时读取
+
+创建、观察或结束 Ray 作业，以及调整 WorkerGroups 时读取。仅训练框架内部使用 Ray 不代表必须迁移到平台 Ray 作业。
+
+## 创建与运行
+
+1. 确定项目、可用区、真实镜像及 Ray 版本、Entrypoint、HeadSpec/WorkerGroups、资源和挂载。按任务实际拓扑选择，不从训练 TaskSpecs 推导。
+2. 读取 `api describe ray CreateRayJob`，保存完整请求文件；字段必填性不代表平台业务条件已满足。
+3. 执行 `ray create --file "$request_file" --dry-run`。核对后移除 dry-run 提交，保存实际作业标识。
+4. 查询 status，要求作业结束时使用 wait；要求产物时按[存储手册](storage.md)验证真实输出。
+
+Ray 操作参数使用 JobName，即列表中的 RayJobName，不能使用 UUID Id 替代。显示名通过 `--by-name` 解析。个人列表按已确认的平台创建者 ID 使用 CreatorId 过滤，不套用 Workspace 的 Creator 用户名。完整列表使用 `--all`；它不会启用需要管理员权限的 API All 字段。
+
+## 观察与排错
 
 ```bash
-yicloud api describe ray CreateRayJob
-yicloud ray create --file ray.json --dry-run
-yicloud ray create --file ray.json
-yicloud ray list --project example-project --zone example-zone
-yicloud ray status RAY_JOB_NAME --project example-project --zone example-zone
-yicloud ray events RAY_JOB_NAME --project example-project --zone example-zone
-yicloud ray instances RAY_JOB_NAME --project example-project --zone example-zone
-yicloud ray logs RAY_JOB_NAME --project example-project --zone example-zone
-yicloud ray workers RAY_JOB_NAME --project example-project --zone example-zone --file workers.json --dry-run
-yicloud ray wait RAY_JOB_NAME --project example-project --zone example-zone
+yicloud ray status "$ray_job_name"
+yicloud ray events "$ray_job_name"
+yicloud ray instances "$ray_job_name"
+yicloud ray logs "$ray_job_name" --since 15m
 ```
 
-ray 资源直接用操作参数 JobName；列表的对应字段是 `RayJobName`，UUID `Id` 不能替代它。显示名称使用 `--by-name`，在列表的 `Namespace`（项目）、`ZoneId` 和 `DisplayName` 内精确匹配，再把 RayJobName 传入操作请求。workers.json 只提供 `WorkerGroups`，不可重复覆盖命令参数中的 Project/ZoneId/JobName。更新前读实际配置，避免清空其他组。
+这些是按诊断需要选择的读取操作。默认 wait 以作业 Status 的成功终态判断，RayClusterStatus=Running 不证明作业成功。日志时间由 CLI 转换；跟随无法识别响应时使用单次查询，并按[API 手册](diagnostics/api.md)保留原始结构。
 
-历史日志使用 GetRayJobLogs 的 Method=query_range，StartTime/EndTime 为纳秒字符串。SDK 没有响应结构，因此保留直接 JSON（若有 Data 则提取 Data）；跟随要求可识别 Items 日志集合，其他形状明确报错后使用通用 API 检查。Method=download 的通用调用需 `--output`，作为原始文件写入。WebSocket 不在首版范围。
+下载历史日志时查询 `api describe ray GetRayJobLogs`，以真实 JobName、范围和时间生成完整请求，Method 使用 `download`，通过 `api call ray GetRayJobLogs --file "$request_file" --output "$output_file"` 下载。检查实际文件内容后才报告成功；不能把查询模式的 JSON 输出当作已下载的日志文件。
 
-失败时先看 events、instances 和日志；stop/delete 没有对应 start，重新提交需要新的创建请求。wait 以任务 Status 成功终态为准，RayClusterStatus=Running 不能证明作业成功。
+## 修改 Worker
 
-个人范围使用 `ray list --project example-project --zone example-zone --set 'CreatorId="PLATFORM_CREATOR_ID"' --all`，CreatorId 是平台创建者 ID，不能套用 Workspace 的 Creator 用户名。默认分页 20 条，检查 Total/Items，完整清单用 `--all`；CLI 的 `--all` 仅遍历分页，不会设置需要管理员权限的 API 字段 All。按名操作可用同样的 `--lookup-set 'CreatorId="PLATFORM_CREATOR_ID"'`。个人过滤对非空资源尚未联测。
+先读取现有组配置，明确用户要调整哪个组、保留哪些组。构造只包含该操作所需附加字段的文件；不能用空 WorkerGroups 作为安全默认值。
 
-来源：[创建 Ray 任务](https://docs.yicloud.com/4/1/1/3/1.html)、[SDK ray](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services/ray)。
+```bash
+yicloud ray workers "$ray_job_name" --extra-file "$workers_file" --dry-run
+```
+
+校验通过且符合授权后移除 dry-run，随后读取实际配置和实例验证。文件不能重复设置命令负责的 Project、ZoneId、JobName；不确定整体替换语义时先核对接口合同，不盲目提交部分组。
+
+## 结束与异常
+
+stop/delete 分别先 dry-run，再在授权范围内执行；使用 `ray wait "$ray_job_name" --target stopped` 或 `--target deleted` 验证。Ray 没有对应 start，重新提交属于新的创建动作。写入超时先查状态；未知状态不算成功，清理仅针对明确归属的资源和路径。
+
+报告作业与集群状态、Worker 调整结果或产物证据，不把集群可用当作用户作业已完成。

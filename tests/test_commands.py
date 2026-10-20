@@ -178,7 +178,7 @@ def test_workload_rejects_duplicate_file_and_set_before_lookup(monkeypatch, valu
             "p",
             "--zone",
             "z",
-            "--file",
+            "--extra-file",
             "-",
             "--set",
             f"Force={json.dumps(value)}",
@@ -186,7 +186,7 @@ def test_workload_rejects_duplicate_file_and_set_before_lookup(monkeypatch, valu
         input='{"Force":true}',
     )
     assert result.exit_code == 1
-    assert "both --file and --set: Force" in result.output
+    assert "both --extra-file and --set: Force" in result.output
 
 
 def test_discovery_accepts_scope_from_set_alone(account, monkeypatch):

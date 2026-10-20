@@ -57,7 +57,7 @@ def list_contexts(ctx):
 @click.pass_context
 def show_context(ctx):
     chosen = context_for(ctx)
-    account = account_for(ctx)
+    account = account_for(ctx, inspect_conflicts=True)
     values = chosen["values"]
     sources = {k: "context" for k in values}
     sources["account"] = (
@@ -88,5 +88,6 @@ def show_context(ctx):
             "values": dict(values, account=account.alias, host=account.host, region=account.region),
             "sources": sources,
             "auth_source": "environment" if any(k in os.environ for k in auth_env) else "account",
+            "account_conflict": ctx.obj.get("account_conflict"),
         },
     )

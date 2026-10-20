@@ -1,7 +1,0 @@
-{
-  "Name": "example-serving",
-  "Project": "example-project",
-  "ZoneId": "example-zone",
-  "Image": "example/inference:tag",
-  "Replicas": 1
-}

@@ -47,6 +47,15 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def packaged_files(source):
+    """Match the skill's distributed instruction files, including source checkouts."""
+    return {
+        p.relative_to(source).as_posix(): digest(p)
+        for p in source.rglob("*")
+        if p.is_file() and p.suffix in {".md", ".yaml"}
+    }
+
+
 def checked_path(root, name):
     dest = root / name
     for p in (dest, *dest.parents):
@@ -61,9 +70,7 @@ def install(target, path=None, uninstall=False):
     destinations = targets(target, path)
     previous = {}
     source = Path(str(files("yicloud").joinpath("skill")))
-    packaged = {
-        p.relative_to(source).as_posix(): digest(p) for p in source.rglob("*") if p.is_file()
-    }
+    packaged = packaged_files(source)
     for dest in destinations:
         old = manifest(dest) if dest.exists() or dest.is_symlink() else {}
         previous[dest] = old
@@ -108,7 +115,10 @@ def install(target, path=None, uninstall=False):
                 shutil.copytree(dest, stage, dirs_exist_ok=True, symlinks=True)
             for name in old.keys() - packaged.keys():
                 (stage / name).unlink(missing_ok=True)
-            shutil.copytree(source, stage, dirs_exist_ok=True)
+            for name in packaged:
+                item = stage / name
+                item.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source / name, item)
             (stage / MARKER).write_text(
                 json.dumps({"owner": OWNER, "files": packaged}), encoding="utf-8"
             )
@@ -132,9 +142,7 @@ def install(target, path=None, uninstall=False):
 def status(target, path=None):
     """Compare installed content with both its ownership manifest and this package."""
     source = Path(str(files("yicloud").joinpath("skill")))
-    packaged = {
-        p.relative_to(source).as_posix(): digest(p) for p in source.rglob("*") if p.is_file()
-    }
+    packaged = packaged_files(source)
     fingerprint = hashlib.sha256(
         json.dumps(packaged, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()

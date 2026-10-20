@@ -104,10 +104,23 @@ def scope_for(ctx, project, zone, *, required=False, allowed=("project", "zone")
     return scope["project"], scope["zone"]
 
 
-def account_for(ctx):
+def account_for(ctx, *, inspect_conflicts=False):
     chosen = context_for(ctx)
     alias = ctx.obj["alias"] if ctx.obj["alias"] is not None else chosen["values"].get("account")
-    a = Account.resolve(alias, ctx.obj["host"], ctx.obj["region"])
+    try:
+        a = Account.resolve(
+            alias,
+            ctx.obj["host"],
+            ctx.obj["region"],
+            explicit_account=ctx.obj["alias"] is not None,
+        )
+    except InputError as error:
+        if not inspect_conflicts:
+            raise
+        # Local context inspection can explain a conflict without authenticating.
+        # Network callers must use the default rejection behavior.
+        ctx.obj["account_conflict"] = error.as_dict()
+        a = Account.resolve(alias, ctx.obj["host"], ctx.obj["region"], explicit_account=False)
     ctx.obj.setdefault("effective_context", {}).update(
         account=a.alias, host=a.host, region=a.region, name=chosen["name"]
     )

@@ -1,25 +1,32 @@
-# 镜像、模型和数据集
+# 镜像、模型与数据集版本
 
-适用于创建前选资产和训练后登记版本。先查当前账号/项目/可用区可见资产，再取版本详情及存储位置；固定可复现版本，创建成功后查询核对。不要把示例镜像当作平台现有资产。
+## 何时读取
 
-```bash
-yicloud api list --service registry
-yicloud api describe registry ListCustomRepositories
-yicloud api call registry ListCustomRepositories --file repositories.json
-yicloud api describe modelrepo CreateModelVersion
-yicloud api call modelrepo ListModelVersion --file model-versions.json
-yicloud api describe dataset CreateDataSetVersion
-yicloud api call dataset ListDataSetVersions --file dataset-versions.json
-```
+为任务选择资产、登记训练产物、修改可见范围或删除资产版本时读取。
 
-repositories.json：`{"ZoneId":"example-zone"}`；model-versions.json：`{"Project":"example-project","ModelId":"example-model"}`；dataset-versions.json：`{"Project":"example-project","DataSetId":"example-dataset"}`。
+## 选择已有资产
 
-模型版本登记使用 ModelPath；数据集版本使用 DataPath/StorageType。先确保对应路径存在、任务输出完整且消费者可读，再提交管理接口。API 登记并不意味着已完成大文件上传。
+1. 沿用用户指定版本；缺失时按项目和可用区查询可见目录。
+2. 分别使用 registry、modelrepo、dataset 服务，通过 `api list --service` 找到对应命令；只查相关资产，不加载整个接口目录。
+3. 获取版本详情，确认镜像标签或摘要、模型路径、数据存储类型与消费身份。可见不等于运行环境一定能拉取或读取。
+4. 固定用户选定版本，传给创建流程；同名多个版本涉及取舍时不任意选最新。
 
-镜像可见性更新使用 UpdateCustomRepositoryVisibility；先描述字段和现有可见范围，按用户授权变更。删除模型/数据集版本或镜像标签前检查仍在使用该版本的任务与服务。
+## 登记产物
 
-环境安装、CPU 制镜像、内部源补包及已有镜像提取见[离线环境与内部源](internal-sources.md)。镜像保存运行环境；代码、模型权重、数据和产物优先使用明确的存储路径。
+先按[存储手册](storage.md)验证真实文件和消费权限，再查询 `CreateModelVersion` 或 `CreateDataSetVersion` 的请求结构。
 
-可选 YICLOUD.md 记录固定镜像标签或摘要、模型版本、数据集版本、源路径、挂载点、消费者和清理条件；不记动态访问 Token 或临时下载 URL。
+模型版本使用 ModelPath，数据集版本使用 DataPath/StorageType；准确嵌套结构仍以 describe 为准。准备完整请求、dry-run、授权范围内提交，再读取新版本详情核对。API 登记不会代替大文件上传。
 
-来源：[官方资产中心入口](https://docs.yicloud.com/)、[SDK registry/modelrepo/dataset](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services)。
+## 更新可见范围或删除
+
+读取当前对象与使用它的任务、服务，明确用户要求变更的范围。镜像可见性使用 UpdateCustomRepositoryVisibility；不因部署读取失败就自动改为公开。
+
+删除前区分版本记录、镜像标签和底层数据。查询删除接口的实际合同；未确认连带删除语义时不假定会保留数据，也不顺便删除路径。修改后重新查询对象及其可见范围。
+
+用户要求保留底层数据时，如果无法确认删除版本的副作用，停止删除并说明缺少哪项保证；请求 schema 通过不能作为依据。取得可靠的保留语义后再执行，并验证底层文件仍可读。
+
+## 异常与完成标准
+
+写入结果未知时先查版本是否存在；重名或来源不明确时消歧。资产存在但消费者不可用时检查权限、路径和环境，不重复登记。
+
+报告固定版本、来源路径、可见范围与实际核验结果。环境制作见[环境准备](environment.md)。可复用资产可记录到项目 YICLOUD.md，不记录临时 Token 或下载 URL。

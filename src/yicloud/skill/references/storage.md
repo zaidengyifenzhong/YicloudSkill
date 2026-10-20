@@ -1,29 +1,42 @@
-# 存储与路径
+# 挂载、传输与持久化产物
 
-适用于准备数据、代码和产物。先区分本地路径、容器挂载点、GPFS 源和对象存储 URI；确保训练、开发机和部署使用的身份有相同资产访问权限。记录源到容器目标路径映射，任务完成后通过真实文件或对象验收。
+## 何时读取
+
+准备输入数据、设置挂载、传输文件、验证输出或清理存储时读取。
+
+## 先确定路径与权限
+
+区分本地文件、容器路径、GPFS 源、云盘和对象存储 URI。记录源到容器挂载点的映射，以及生产者、消费者身份。不能把主机路径直接当作容器路径，也不能假定创建者可读就意味着部署可读。
+
+已有存储直接核验；需要发现时按类型查询 `api list --service volume`、`fs` 或 `oss`，根据 command 字段找到专用入口。需要复杂字段时再 describe。云盘或 bucket 管理接口不等于文件上传接口。
+
+## 选择传输方式
+
+- 已连接开发机：用 [workspace scp](workspace/connect.md)，复制后检查目标文件。
+- 训练或部署共享输入输出：在对应创建请求中填写实际持久盘或共享存储挂载。检查真实可访问文件集、挂载点和读写权限。
+- 对象存储：CLI 提供 bucket 管理；对象传输使用已配置的 S3 兼容客户端。先核实 endpoint 和独立 S3 身份，不把网关 HMAC 凭据当作 S3 凭据。
+
+若使用已安装并配置好的 AWS CLI，下例变量分别来自真实 endpoint、源文件及对象 URI：
 
 ```bash
-yicloud api list --service volume
-yicloud api list --service fs
-yicloud api describe fs/alpha ListDir
-yicloud api call fs/alpha ListDir --file list-dir.json
-yicloud api list --service oss
-yicloud api call oss ListBuckets
+aws --endpoint-url "$s3_endpoint" s3 cp "$source_file" "$object_uri"
 ```
 
-list-dir.json 示例：`{"path":"/example/shared","page":1,"pageSize":20}`。文件存储扩展服务名为 `fs/alpha`，实际路径产品为 yifs。ListDir → ListFiles、CreateFile → CreateFiles、DeleteFile → DeleteFiles、Set/GetFilesetQuota → FilesetQuota，不能从操作名拼 URL。路径使用小写 JSON 字段；响应可能直接包含 files/items/total，不能强制要求 Data 信封。
+凭据不写入命令或项目资产文档；目标已存在时先确认覆盖属于任务范围。
 
-卷创建、回收、恢复和挂载前运行 api describe，确认删除是否影响关联任务。云盘与文件存储管理接口不等同于上传任意文件。开发机文件传输用 workspace scp；训练使用持久盘、共享文件存储或对象存储输入输出配置。
+## 验证产物
 
-对象存储首版只实现官方 SDK 的 bucket 管理接口。对象传输使用官方 S3 兼容工作流，独立配置 S3 凭据和 endpoint，不把 Yicloud 网关 HMAC 凭据直接当作 S3 凭据。以下环境变量需由用户在受信任终端配置；不在资产文档保存秘密：
+1. 从生产任务配置取得精确输出路径，不只采用日志中未经检查的描述。
+2. 在目标消费环境实际读取文件或对象。
+3. 检查用户要求的内容、格式、数量或哈希；持久化要求最好由独立后续进程读取。
+4. 没有产物时检查挂载、运行目录、写权限与任务日志；保留排错所需资源。
 
-```bash
-aws --endpoint-url "$YICLOUD_S3_ENDPOINT" s3 cp ./data.json s3://example-bucket/input/data.json
-aws --endpoint-url "$YICLOUD_S3_ENDPOINT" s3 cp s3://example-bucket/output/result.json ./result.json
-```
+## 清理与异常
 
-该命令依赖另行安装 AWS CLI 并按官方资料配置 S3 访问凭据。SDK 没有对象上传下载操作，CLI 不另造上传接口。
+删除前明确对象类型、唯一标识和依赖；对支持的管理写操作先 describe/dry-run，再执行及复查。不得根据名称相似删除目录，也不递归清理用户既有研究数据。
 
-开发机删除的 `DelWithCloudVolume=true` 表示关联云盘移入回收站，不等于永久删除。实测指定 IDs 时，ListVolumes 的 SoftDeleted=true/false 均返回同一云盘，且 DeleteTime 非零但 SoftDeleted=false；筛选优先级及字段语义仍待平台确认。清理时结合删除请求结果、按 ID 详情、DeleteTime 与回收站状态核验，不能只依赖 SoftDeleted，也不能据此声称物理删除完成。
+开发机的 DelWithCloudVolume=true 表示关联云盘进入回收流程，不是物理销毁承诺。SoftDeleted、DeleteTime 或列表过滤不一致时，结合详情与回收站核对，不凭单个字段宣称删除完成。
 
-来源：[文件存储](https://docs.yicloud.com/4/3/1/2.html)、[对象存储](https://docs.yicloud.com/4/3/1/3.html)、[SDK services](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services)。
+`fs/alpha` 是旧文件存储 API 服务名；通过 CLI 路由调用，不自行拼 URL。未知列表结构不能当作空目录，协议差异见[兼容问题](diagnostics/compatibility.md)。
+
+完成时报告真实路径、消费者读取证据及清理范围；管理接口成功不代表文件上传或内容验证完成。

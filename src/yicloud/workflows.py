@@ -1,4 +1,5 @@
 import json
+import math
 import time
 from datetime import datetime, timezone
 
@@ -222,16 +223,218 @@ def workload_params(
     return params
 
 
-def wait(client, kind, params, *, timeout=1800, interval=5, clock=time.monotonic, sleep=time.sleep):
+def workload_list_params(kind, resource_id, project, zone):
     w = WORKLOADS[kind]
-    if timeout is not None and timeout < 0:
-        raise InputError("Wait timeout must be non-negative or None")
-    if interval <= 0:
-        raise InputError("Wait interval must be positive")
-    deadline = None if timeout is None else clock() + timeout
-    success = (
-        {"running"} if kind in ("workspace", "serving") else {"succeeded", "complete", "completed"}
+    params = scoped_params(w["service"], w["list"], project, zone)
+    # These filters only narrow the query. Always compare returned IDs exactly.
+    if kind == "workspace":
+        params["WorkspaceId"] = [resource_id]
+    elif kind == "job":
+        params["JobIds"] = resource_id
+    elif kind == "serving":
+        params["Id"] = resource_id
+    return params
+
+
+def resource_rows(client, kind, resource_id, project, zone):
+    w = WORKLOADS[kind]
+    result = paginated(
+        client,
+        w["service"],
+        w["list"],
+        workload_list_params(kind, resource_id, project, zone),
+        True,
     )
+    rows = items(result.data)
+    id_field = LIST_FIELDS[kind]["id"]
+    if any(
+        not isinstance(row, dict) or not isinstance(row.get(id_field), str) or not row[id_field]
+        for row in rows
+    ):
+        raise YicloudError("Cannot identify resources in list response; scope is not verified")
+    matches = [row for row in rows if row[id_field] == resource_id]
+    if len(matches) > 1:
+        raise YicloudError("Resource ID is ambiguous in list response; scope is not verified")
+    return result, matches
+
+
+def _check_scope_fields(data, kind, resource_id, project, zone):
+    if not isinstance(data, dict):
+        raise YicloudError("Unrecognized resource detail response; scope is not verified")
+    expected = {"Project": project, "Namespace": project, "ZoneId": zone}
+    # Endpoints identify their target by ID. Also check echoed IDs whenever available.
+    for key in {WORKLOADS[kind]["id"], LIST_FIELDS[kind]["id"]}:
+        if key in data and data[key] != resource_id:
+            raise InputError(f"Resource ID mismatch in {key}; refusing to write")
+    for key, value in expected.items():
+        if key in data and data[key] != value:
+            raise InputError(f"Resource scope mismatch in {key}; refusing to write")
+    return ("Project" in data or "Namespace" in data) and "ZoneId" in data
+
+
+def verify_workload_scope(client, kind, resource_id, project, zone):
+    """Verify actual resource ownership before a CLI mutation, never during preview."""
+    if not project or not zone:
+        raise InputError("Resource writes require project and zone for scope verification")
+    w = WORKLOADS[kind]
+    params = scoped_params(w["service"], w["status"], project, zone, resource_id, w["id"])
+    detail = client.call(w["service"], w["status"], params)
+    if _check_scope_fields(detail.data, kind, resource_id, project, zone):
+        return
+    _, rows = resource_rows(client, kind, resource_id, project, zone)
+    if not rows or not _check_scope_fields(rows[0], kind, resource_id, project, zone):
+        raise YicloudError(
+            "API responses cannot prove the requested project and zone; refusing to write"
+        )
+
+
+def workload_write_kind(service, action):
+    """Only operations with a known parent workload identity can use this guard."""
+    for kind, w in WORKLOADS.items():
+        if w["service"] != service or action == w["create"]:
+            continue
+        op = operation(service, action)
+        fields = request_schema(op)["properties"]
+        if not op["read_only"] and (w["id"] in fields or "Resources" in fields):
+            return kind
+    return None
+
+
+def verify_workload_write(client, service, action, params, *, zone=None):
+    kind = workload_write_kind(service, action)
+    if kind is None:
+        return
+    w = WORKLOADS[kind]
+    targets = params.get("Resources", [params])
+    if not isinstance(targets, list) or not targets:
+        raise InputError("Resource write requires at least one identifiable target")
+    for target in targets:
+        if not isinstance(target, dict) or not target.get(w["id"]):
+            raise InputError("Resource write requires an explicit workload ID for every target")
+        verify_workload_scope(
+            client,
+            kind,
+            target[w["id"]],
+            target.get("Project"),
+            target.get("ZoneId") or zone,
+        )
+
+
+def validate_polling(timeout, interval):
+    if timeout is not None and (
+        type(timeout) not in (int, float) or not math.isfinite(timeout) or timeout < 0
+    ):
+        raise InputError("Wait timeout must be finite and non-negative or None")
+    if type(interval) not in (int, float) or not math.isfinite(interval) or interval <= 0:
+        raise InputError("Polling interval must be finite and positive")
+
+
+def _wait_deadline(timeout, interval, clock):
+    validate_polling(timeout, interval)
+    return None if timeout is None else clock() + timeout
+
+
+def _wait_sleep(deadline, interval, clock, sleep, evidence):
+    remaining = interval if deadline is None else deadline - clock()
+    if remaining <= 0:
+        raise WaitTimeout(
+            "Local wait timed out; remote workload was not stopped; query status again",
+            **evidence,
+        )
+    sleep(min(interval, remaining))
+
+
+def wait_deleted(
+    client,
+    kind,
+    resource_id,
+    project,
+    zone,
+    *,
+    timeout=1800,
+    interval=5,
+    clock=time.monotonic,
+    sleep=time.sleep,
+):
+    """Confirm absence from a complete scoped listing, without reclassifying API errors."""
+    deadline = _wait_deadline(timeout, interval, clock)
+    while True:
+        result, rows = resource_rows(client, kind, resource_id, project, zone)
+        observed_at = datetime.now(timezone.utc).isoformat()
+        if not rows:
+            result.data = {
+                "resource_id": resource_id,
+                "project": project,
+                "zone": zone,
+                "state": "absent",
+                "evidence": "complete_scoped_list",
+                "observed_at": observed_at,
+            }
+            return result
+        if not _check_scope_fields(rows[0], kind, resource_id, project, zone):
+            raise YicloudError("Cannot verify the listed resource scope while waiting for deletion")
+        _wait_sleep(
+            deadline,
+            interval,
+            clock,
+            sleep,
+            {
+                "last_status": "present",
+                "observed_at": observed_at,
+                "request_id": result.request_id,
+            },
+        )
+
+
+def _replicas_ready(data, replicas, evidence):
+    # GetInferSet's documented counts apply to simple deployments, not distributed
+    # or PD topologies. Missing mode flags do not prove a simple deployment.
+    for field in ("Distributed", "PDSeparationEnabled"):
+        if data.get(field) is not False:
+            raise UnknownState(
+                f"Replica waiting requires {field}=false; inspect deployment topology", **evidence
+            )
+    counts = [data.get(field) for field in ("Replicas", "TotalReplicas", "ReadyReplicas")]
+    if any(type(count) is not int or count < 0 for count in counts):
+        raise UnknownState(
+            "Replica counts are missing or invalid; cannot verify readiness", **evidence
+        )
+    return all(count == replicas for count in counts)
+
+
+def wait(
+    client,
+    kind,
+    params,
+    *,
+    timeout=1800,
+    interval=5,
+    target="default",
+    replicas=None,
+    clock=time.monotonic,
+    sleep=time.sleep,
+):
+    w = WORKLOADS[kind]
+    if target not in {"default", "stopped"}:
+        raise InputError("Status wait target must be default or stopped")
+    if replicas is not None and (
+        kind != "serving" or target != "default" or type(replicas) is not int or replicas < 0
+    ):
+        raise InputError(
+            "Replica waiting requires serving default target and a non-negative integer"
+        )
+    deadline = _wait_deadline(timeout, interval, clock)
+    success = (
+        {"stopped"}
+        if target == "stopped"
+        else (
+            {"running"}
+            if kind in ("workspace", "serving")
+            else {"succeeded", "complete", "completed"}
+        )
+    )
+    if replicas == 0:
+        success = {"running", "stopped"}
     pending = {
         "pending",
         "starting",
@@ -245,29 +448,37 @@ def wait(client, kind, params, *, timeout=1800, interval=5, clock=time.monotonic
         "selfhealrunning",
         "selfhealsucceeded",
     }
+    if target == "stopped":
+        pending.add("stopping")
     while True:
         result = client.call(w["service"], w["status"], params)
         observed_at = datetime.now(timezone.utc).isoformat()
-        data = result.data or {}
-        status = str(
-            data.get("Phase", data.get("Status", data.get("JobStatus", "Unknown")))
-        ).lower()
-        evidence = dict(last_status=status, observed_at=observed_at, request_id=result.request_id)
-        if status in success:
+        data = result.data
+        evidence = dict(
+            last_status="unknown", observed_at=observed_at, request_id=result.request_id
+        )
+        if not isinstance(data, dict):
+            raise UnknownState("Unrecognized workload status response", **evidence)
+        raw_status = data.get("Phase", data.get("Status", data.get("JobStatus")))
+        if not isinstance(raw_status, str) or not raw_status:
+            raise UnknownState("Missing or invalid workload status", **evidence)
+        status = raw_status.lower()
+        evidence["last_status"] = status
+        ready = _replicas_ready(data, replicas, evidence) if replicas is not None else True
+        if status in success and ready:
             return result
-        if status in {"failed", "stopped", "stopping", "deleted", "selfhealfailed"}:
+        if target == "stopped" and status in {"succeeded", "complete", "completed"}:
+            raise RemoteFailed(f"Remote workload ended with {status}, not stopped", **evidence)
+        if (
+            status
+            in {"failed", "stopped", "stopping", "deleted", "selfhealfailed"} - success - pending
+        ):
             raise RemoteFailed(f"Remote workload ended with {status}", **evidence)
-        if status not in pending:
+        if status not in pending | success:
             raise UnknownState(
                 f"Unknown workload status: {status}; inspect status/events manually", **evidence
             )
-        remaining = interval if deadline is None else deadline - clock()
-        if remaining <= 0:
-            raise WaitTimeout(
-                "Local wait timed out; remote workload was not stopped; query status again",
-                **evidence,
-            )
-        sleep(min(interval, remaining))
+        _wait_sleep(deadline, interval, clock, sleep, evidence)
 
 
 def log_params(kind, params, start=None, end=None, limit=200, instance=None):
@@ -286,6 +497,7 @@ def log_params(kind, params, start=None, end=None, limit=200, instance=None):
 
 
 def follow_logs(client, kind, params, emit, *, interval=3, sleep=time.sleep, clock=time.time_ns):
+    validate_polling(None, interval)
     w = WORKLOADS[kind]
     start = params.get("Start", int(params.get("StartTime", clock())))
     seen = set()

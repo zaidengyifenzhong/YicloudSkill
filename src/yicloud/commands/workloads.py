@@ -14,9 +14,13 @@ from ..workflows import (
     WORKLOADS,
     follow_logs,
     resolve,
+    validate_polling,
     validate_workload_extra,
     wait,
+    wait_deleted,
+    verify_workload_scope,
     workload_params,
+    workload_list_params,
 )
 from .connections import connection_commands
 from .discovery import query_command
@@ -35,7 +39,9 @@ def resource_options(command):
     command = click.option(
         "--by-name", is_flag=True, help="Resolve an exact name within project and zone."
     )(command)
-    command = click.option("--zone", help="Lookup scope; sent only if the API accepts it.")(command)
+    command = click.option(
+        "--zone", help="Lookup and write-verification scope; sent only if the API accepts it."
+    )(command)
     command = click.option("--project")(command)
     return click.argument("resource")(command)
 
@@ -58,7 +64,7 @@ def extra_options(kind, verb, command):
             multiple=True,
             help="Additional FIELD=JSON; cannot override scope or ID.",
         )(command)
-        command = click.option("--file", help="Additional request fields as JSON.")(command)
+        command = click.option("--extra-file", help="Additional request fields as JSON.")(command)
     return command
 
 
@@ -161,22 +167,28 @@ def run_operation(
     by_name,
     dry_run,
     lookup_settings=(),
-    file=None,
+    extra_file=None,
     settings=(),
     timeout=1800,
     interval=None,
     follow=False,
+    target="default",
+    wait_replicas=None,
     **options,
 ):
+    if verb == "wait":
+        validate_polling(timeout, interval if interval is not None else 5)
+    elif follow:
+        validate_polling(None, interval if interval is not None else 3)
     project, zone = scope_for(ctx, project, zone, required=True)
     w = WORKLOADS[kind]
     action = w["status"] if verb == "wait" else w[verb]
-    extra = read_json(file)
+    extra = read_json(extra_file)
     fields = assignments(settings)
     duplicates = extra.keys() & fields.keys()
     if duplicates:
         raise InputError(
-            "Fields supplied by both --file and --set: " + ", ".join(sorted(duplicates))
+            "Fields supplied by both --extra-file and --set: " + ", ".join(sorted(duplicates))
         )
     extra.update(fields)
     validate_workload_extra(kind, extra)
@@ -195,17 +207,37 @@ def run_operation(
             raise InputError(
                 "Use log options for time, limit and instance; direction is managed automatically"
             )
+    if verb == "wait" and target == "deleted" and by_name:
+        raise InputError("Waiting for deletion requires the saved resource ID, not --by-name")
     with client_for(ctx) as client:
         rid = resolve(
             client, kind, resource, project, zone, by_name, lookup=assignments(lookup_settings)
         )
         params = workload_params(kind, verb, rid, project, zone, extra=extra, **options)
         if dry_run:
+            if verb == "wait" and target == "deleted":
+                action = w["list"]
+                params = workload_list_params(kind, rid, project, zone)
             emit(ctx, client.dry_run(w["service"], action, params), w["service"], action)
+        elif verb == "wait" and target == "deleted":
+            emit_result(
+                ctx,
+                wait_deleted(client, kind, rid, project, zone, timeout=timeout, interval=interval),
+                w["service"],
+                w["list"],
+            )
         elif verb == "wait":
             emit_result(
                 ctx,
-                wait(client, kind, params, timeout=timeout, interval=interval),
+                wait(
+                    client,
+                    kind,
+                    params,
+                    timeout=timeout,
+                    interval=interval,
+                    target=target,
+                    replicas=wait_replicas,
+                ),
                 w["service"],
                 action,
             )
@@ -218,6 +250,9 @@ def run_operation(
                 interval=interval or 3,
             )
         else:
+            if not operation(w["service"], action)["read_only"]:
+                client.dry_run(w["service"], action, params)
+                verify_workload_scope(client, kind, rid, project, zone)
             emit_result(ctx, client.call(w["service"], action, params), w["service"], action)
 
 
@@ -230,6 +265,16 @@ def action_command(kind, verb):
 
 
 def wait_command(kind):
+    @click.option(
+        "--target",
+        type=click.Choice(["default", "stopped", "deleted"]),
+        default="default",
+        show_default=True,
+        help=(
+            "Default: running for workspace/serving, successful completion for job/ray. "
+            "Deleted: wait for ID absence from a complete scoped list; requires saved ID."
+        ),
+    )
     @click.option("--no-timeout", is_flag=True, help="Wait until completion or interruption.")
     @click.option("--timeout", type=click.FloatRange(min=0), default=1800, show_default=True)
     @click.option(
@@ -241,15 +286,24 @@ def wait_command(kind):
     )
     @click.pass_context
     def command(ctx, no_timeout, **options):
+        if options.get("wait_replicas") is not None and options["target"] != "default":
+            raise InputError("--replicas cannot be combined with --target stopped/deleted")
         if no_timeout:
             if ctx.get_parameter_source("timeout") == ParameterSource.COMMANDLINE:
                 raise InputError("--timeout and --no-timeout are mutually exclusive")
             options["timeout"] = None
         run_operation(ctx, kind, "wait", **options)
 
-    return click.command("wait", help="Wait for the workload to reach its success state.")(
-        resource_options(extra_options(kind, "wait", command))
-    )
+    if kind == "serving":
+        command = click.option(
+            "--replicas",
+            "wait_replicas",
+            type=click.IntRange(min=0),
+            help="Wait for this many configured, total and ready replicas (simple deployments only).",
+        )(command)
+    return click.command(
+        "wait", help="Wait for an explicit state; timeout never stops the resource."
+    )(resource_options(extra_options(kind, "wait", command)))
 
 
 def logs_command(kind):
@@ -299,7 +353,7 @@ def scale_command(kind):
 
 def workers_command(kind):
     @click.option(
-        "--file", required=True, help="JSON object containing WorkerGroups; use - for stdin."
+        "--extra-file", required=True, help="JSON object containing WorkerGroups; use - for stdin."
     )
     @click.pass_context
     def command(ctx, **options):

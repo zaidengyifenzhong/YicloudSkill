@@ -10,7 +10,7 @@ from ..cli_support import assignments, client_for, emit, emit_result, read_json,
 from ..command_routes import EDIT_IDS, command_routes, kebab
 from ..errors import InputError
 from ..output import secret_values
-from ..workflows import paginated
+from ..workflows import paginated, verify_workload_write, workload_write_kind
 
 
 class JSONValue(click.ParamType):
@@ -53,6 +53,7 @@ def request_command(service, action, name):
     schema = request_schema(op)
     fields = schema["properties"]
     id_field = EDIT_IDS.get((service, action))
+    guarded_write = workload_write_kind(service, action) is not None
     can_page = op["read_only"] and {"Limit", "Offset"} <= fields.keys()
     can_download = op["response_mode"] == "file"
     # Indexed parameter names keep official field spelling separate from Click names.
@@ -61,6 +62,7 @@ def request_command(service, action, name):
     @click.pass_context
     def command(ctx, file, settings, dry_run, **values):
         resource = values.pop("resource", None)
+        verification_zone = values.pop("verification_zone", None)
         all_pages = values.pop("all_pages", False)
         output = values.pop("output", None)
         explicit = {
@@ -119,6 +121,11 @@ def request_command(service, action, name):
                     ctx, paginated(client, service, action, params, all_pages), service, action
                 )
             else:
+                if guarded_write:
+                    _, scope_zone = scope_for(
+                        ctx, None, params.get("ZoneId") or verification_zone, allowed=("zone",)
+                    )
+                    verify_workload_write(client, service, action, params, zone=scope_zone)
                 emit_result(
                     ctx, client.call(service, action, params, output=output), service, action
                 )
@@ -148,6 +155,13 @@ def request_command(service, action, name):
                 type=field_type(spec),
                 default=None,
                 help=f"{field}: {spec.get('description', '')}.{required}{choices}",
+            )
+        )
+    if guarded_write and "ZoneId" not in fields:
+        options.append(
+            click.Option(
+                ["--zone", "verification_zone"],
+                help="Zone for pre-write resource verification; not added to the API request.",
             )
         )
     if id_field:

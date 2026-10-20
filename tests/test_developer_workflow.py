@@ -317,10 +317,10 @@ def test_skill_status_detects_content_not_just_version(tmp_path):
     install("codex", dest)
     assert status("codex", dest)["targets"][0]["state"] == "matching"
     (dest / "SKILL.md").write_text("local edits")
-    (dest / "references/jobs.md").unlink()
+    (dest / "references/jobs/run.md").unlink()
     row = status("codex", dest)["targets"][0]
     assert row["state"] == "different" and row["local_edits"] == ["SKILL.md"]
-    assert row["missing"] == ["references/jobs.md"]
+    assert row["missing"] == ["references/jobs/run.md"]
     assert (dest / "SKILL.md").read_text() == "local edits"
 
 
@@ -390,7 +390,7 @@ def test_explicit_null_scope_is_not_replaced_by_context(named_context, monkeypat
 def test_named_context_does_not_change_create_request_file(named_context, tmp_path):
     from pathlib import Path
 
-    body = json.loads(Path("src/yicloud/skill/assets/examples/job.json").read_text())
+    body = json.loads(Path("tests/fixtures/requests/job.json").read_text())
     path = tmp_path / "job.json"
     path.write_text(json.dumps(body))
     result = invoke("job", "create", "--file", str(path), "--dry-run")

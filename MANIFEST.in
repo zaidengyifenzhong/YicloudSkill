@@ -1,7 +1,7 @@
 include LICENSE THIRD_PARTY.md
 recursive-include licenses *.txt
 recursive-include src/yicloud/data *.json
-recursive-include src/yicloud/skill *
+recursive-include src/yicloud/skill *.md *.yaml
 include install.sh install.ps1
 recursive-include tools *.py *.go *.json
 recursive-include tests *.py *.json
@@ -11,4 +11,4 @@ prune reports
 prune audits
 prune issues
 prune logs
-global-exclude *.log
+global-exclude *.log .DS_Store

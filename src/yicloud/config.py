@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from .errors import ConfigurationError
+from .errors import ConfigurationError, InputError
 
 
 def config_path():
@@ -85,7 +85,12 @@ class Account:
         self.host = self.host.rstrip("/")
 
     @classmethod
-    def resolve(cls, alias=None, host=None, region=None):
+    def resolve(cls, alias=None, host=None, region=None, *, explicit_account=None):
+        """Resolve credentials, rejecting environment overrides of an explicit account.
+
+        Callers passing an alias select it explicitly by default. CLI context
+        selection can opt out because it is a default, not an --account argument.
+        """
         state = read_state()
         selected = alias or state.get("current")
         if selected and selected not in state["accounts"]:
@@ -97,6 +102,31 @@ class Account:
             "YICLOUD_SECRET_KEY",
             "YICLOUD_IS_SERVICE_ACCOUNT",
         )
+        if explicit_account is None:
+            explicit_account = alias is not None
+        if explicit_account:
+            conflicts = [key for key in auth_keys if key in os.environ]
+            for field, key, override in (
+                ("host", "YICLOUD_API_HOST", host),
+                ("region", "YICLOUD_REGION_ID", region),
+            ):
+                env_value = os.getenv(key)
+                saved_value = values.get(field) or getattr(cls, field)
+                # Explicit route flags already take precedence over environment.
+                # An equivalent HTTPS origin with a trailing slash is harmless.
+                if field == "host":
+                    env_value = env_value.rstrip("/") if env_value else env_value
+                    if isinstance(saved_value, str):
+                        saved_value = saved_value.rstrip("/")
+                if not override and env_value and env_value != saved_value:
+                    conflicts.append(key)
+            if conflicts:
+                raise InputError(
+                    "Explicit account conflicts with environment configuration: "
+                    + ", ".join(conflicts)
+                    + ". Unset these variables to use the selected account, or omit "
+                    "--account to use environment authentication and routing."
+                )
         if any(k in os.environ for k in auth_keys):
             values.update(
                 token=os.getenv(auth_keys[0], ""),

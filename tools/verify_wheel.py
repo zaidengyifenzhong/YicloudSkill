@@ -197,26 +197,32 @@ with tempfile.TemporaryDirectory(prefix="yicloud-wheel-") as scratch:
     finally:
         config.unlink()
 
-    # Templates must work without a source checkout or user account.
-    for kind in ("workspace", "job", "ray", "serving"):
-        template = skill / "assets" / "examples" / f"{kind}.json"
-        request = call("--json", kind, "create", "--file", str(template), "--dry-run")["data"]
-        assert request["validation"] == "passed"
-    workers = skill / "assets" / "examples" / "workers.json"
+    # Old skeletal examples and maintenance matrix must not reach execution agents.
+    assert not list((skill / "assets").rglob("*.json"))
+    assert not (skill / "references/support.md").exists()
+    assert (skill / "references/jobs/run.md").is_file()
+    assert (skill / "references/serving/scaling.md").is_file()
+    preview = call(
+        "--json", "job", "stop", "fixture", "--project", "p", "--zone", "z", "--dry-run"
+    )["data"]
+    assert preview["validation_scope"] == "local_pinned_sdk_request"
+    # Validate the new attached-fields contract outside the source tree.
+    extra = root / "workers.json"
+    extra.write_text('{"WorkerGroups": []}', encoding="utf-8")
     request = call(
         "--json",
         "ray",
         "workers",
         "fixture",
         "--project",
-        "fixture-project",
+        "p",
         "--zone",
-        "fixture-zone",
-        "--file",
-        str(workers),
+        "z",
+        "--extra-file",
+        str(extra),
         "--dry-run",
     )["data"]
-    assert request["validation"] == "passed"
+    assert request["body"]["WorkerGroups"] == []
     # Validate links after installation, rather than relying on a reference file count.
     for document in skill.rglob("*.md"):
         for target in re.findall(r"\]\(([^)]+)\)", document.read_text(encoding="utf-8")):

@@ -189,11 +189,18 @@ def test_all_new_commands_accept_complete_request_files(
         ),
     ],
 )
-def test_writes_send_exactly_one_request(args, body, account, monkeypatch):
+def test_writes_verify_scope_then_send_exactly_one_write(args, body, account, monkeypatch):
     calls = []
 
     def handler(request):
         calls.append(request)
+        if request.method == "GET":
+            fields = dict(request.url.params)
+            key = next(k for k in ("WorkspaceId", "JobId", "ID") if k in fields)
+            return httpx.Response(
+                200,
+                json={"Code": 0, "Data": {key: fields[key], "Project": "p", "ZoneId": "z"}},
+            )
         assert request.method == "POST"
         assert json.loads(request.content) == body
         return httpx.Response(200, json={"Code": 0, "Data": {"saved": True}})
@@ -202,9 +209,12 @@ def test_writes_send_exactly_one_request(args, body, account, monkeypatch):
         "yicloud.commands.catalog_commands.client_for",
         lambda ctx: YicloudClient(account, transport=httpx.MockTransport(handler)),
     )
+    if "--zone" not in args:
+        args = [*args, "--zone", "z"]
     result = invoke(*args)
     assert result.exit_code == 0, result.output
-    assert len(calls) == 1
+    assert sum(request.method == "POST" for request in calls) == 1
+    assert calls[0].method == "GET" and calls[-1].method == "POST"
 
 
 @pytest.fixture
