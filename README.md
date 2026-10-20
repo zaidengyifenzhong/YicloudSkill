@@ -135,24 +135,8 @@ with YicloudClient.from_account("research") as client:
 - [存储](src/yicloud/skill/references/storage.md) · [镜像、模型与数据集](src/yicloud/skill/references/assets.md)
 - [端到端工作流](src/yicloud/skill/references/workflows.md)
 - [API 说明](src/yicloud/skill/references/api.md) · [接口支持矩阵](src/yicloud/skill/references/support.md)
-- [CLI 完善与真实任务验证问题记录](docs/2026-10-20-cli-validation-issues.md)
 
-当前基于仪电智算云 Go SDK v0.5.1，实现固定目录中的 225 个 HTTP 操作；该数量不等于线上控制台的全部路由。网页终端与 WebSocket 日志暂不支持，日志跟随使用轮询。已实测 `.com.cn` 的 HMAC、部分只读接口和 Mac 上的 SSH/SFTP；临时 CPU 开发机的创建、等待、删除，以及单副本 CPU Job 的创建、运行、日志、跨任务 GPFS 产物校验、停止和删除已实测。GPU/多副本 Job、Ray/Serving 写操作、Token 与服务账号认证尚未联机验证。实际问题与证据范围见[验证问题记录](docs/2026-10-20-cli-validation-issues.md)。
-
-## 开发
-
-克隆仓库后安装开发依赖并运行离线检查：
-
-```bash
-uv sync --extra dev
-uv run pytest
-uv run ruff check src tests tools
-uv run ruff format --check src tests tools
-uv run python tools/check_catalog.py
-uv run python tools/validate_skill.py
-```
-
-贡献代码请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)，用户可见变化见 [CHANGELOG.md](CHANGELOG.md)。
+当前基于仪电智算云 Go SDK v0.5.1，实现固定目录中的 225 个 HTTP 操作；该数量不等于线上控制台的全部路由。网页终端与 WebSocket 日志暂不支持，日志跟随使用轮询。已实测 `.com.cn` 的 HMAC、部分只读接口和 Mac 上的 SSH/SFTP；临时 CPU 开发机的创建、等待、删除，以及单副本 CPU Job 的创建、运行、日志、跨任务 GPFS 产物校验、停止和删除已实测。GPU/多副本 Job、Ray/Serving 写操作、Token 与服务账号认证尚未联机验证。接口行为与验证范围见 [API 说明](src/yicloud/skill/references/api.md)。
 
 ## License
 

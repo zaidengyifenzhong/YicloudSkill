@@ -1,9 +1,14 @@
-include LICENSE THIRD_PARTY.md CONTRIBUTING.md CHANGELOG.md
+include LICENSE THIRD_PARTY.md
 recursive-include licenses *.txt
 recursive-include src/yicloud/data *.json
 recursive-include src/yicloud/skill *
 include install.sh install.ps1
 recursive-include tools *.py *.go *.json
 recursive-include tests *.py *.json
-include docs/architecture.md
-include docs/2026-10-20-cli-validation-issues.md
+exclude CONTRIBUTING.md CHANGELOG* CHANGES* HISTORY*
+prune docs
+prune reports
+prune audits
+prune issues
+prune logs
+global-exclude *.log

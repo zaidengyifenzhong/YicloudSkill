@@ -20,7 +20,6 @@ coverage.xml
 # Local credentials, configuration, and private asset records
 YICLOUD.md
 /AGENTS.md
-/docs/*-feedback.md
 .env
 .env.*
 !.env.example
@@ -34,6 +33,18 @@ YICLOUD.md
 /yicloud-config*.json
 *.pem
 *.key
+
+# Local development notes, change histories, and investigation records
+/CHANGELOG*
+/CHANGES*
+/HISTORY*
+/CONTRIBUTING.md
+/docs/
+/reports/
+/audits/
+/issues/
+/logs/
+*.log
 
 # Editor and OS files
 .idea/
