@@ -135,6 +135,39 @@ def test_follow_uses_ns_and_deduplicates_boundary(account):
     )
 
 
+def test_follow_does_not_skip_logs_indexed_after_an_empty_poll(account):
+    calls = []
+    emitted = []
+    clocks = iter([10 * 10**9, 20 * 10**9, 30 * 10**9])
+    timestamp = 10**9
+
+    def handler(request):
+        query = dict(request.url.params)
+        calls.append(query)
+        # This event becomes searchable after a delay exceeding the old 3s window.
+        rows = []
+        if len(calls) > 1 and int(query["Start"]) <= timestamp:
+            rows = [{"Timestamp": str(timestamp), "Line": "late-indexed-marker"}]
+        return httpx.Response(200, json={"Code": 0, "Data": {"Items": rows}})
+
+    def sleep(_):
+        if len(calls) == 2:
+            raise KeyboardInterrupt()
+
+    with YicloudClient(account, transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(KeyboardInterrupt):
+            follow_logs(
+                client,
+                "job",
+                {"Project": "p", "JobId": "j", "Start": 0, "Limit": 200},
+                emitted.append,
+                sleep=sleep,
+                clock=lambda: next(clocks),
+            )
+    assert [int(query["Start"]) for query in calls] == [0, 0]
+    assert emitted == [{"Timestamp": str(timestamp), "Line": "late-indexed-marker"}]
+
+
 def test_serving_pagination_accepts_nested_data_list(account):
     def handler(request):
         offset = int(request.url.params.get("Offset", 0))
@@ -148,6 +181,53 @@ def test_serving_pagination_accepts_nested_data_list(account):
         result = paginated(c, "inferset", "ListInferSet", {"Project": "p", "Limit": 2}, True)
         assert len(result.data["Items"]) == 3
         assert result.data["Items"][2]["ID"] == "fixture-2"
+
+
+@pytest.mark.parametrize("offset,expected_offsets", [(0, [0, 100]), (50, [50]), (150, [150])])
+def test_pagination_respects_server_limit_and_initial_offset(account, offset, expected_offsets):
+    calls = []
+
+    def handler(request):
+        start = int(request.url.params["Offset"])
+        calls.append(start)
+        rows = [{"ID": n} for n in range(start, min(start + 100, 150))]
+        return httpx.Response(200, json={"Code": 0, "Data": {"Items": rows, "Total": 150}})
+
+    with YicloudClient(account, transport=httpx.MockTransport(handler)) as client:
+        result = paginated(
+            client,
+            "volume",
+            "ListQuotaGroupVolumes",
+            {
+                "Project": "p",
+                "QuotaGroup": "q",
+                "Limit": 200,
+                "Offset": offset,
+            },
+            True,
+        )
+    assert calls == expected_offsets
+    assert result.data == {"Items": [{"ID": n} for n in range(offset, 150)], "Total": 150 - offset}
+
+
+@pytest.mark.parametrize("page,total", [([{"ID": 1}], 2), ([], 2)])
+def test_pagination_does_not_report_incomplete_or_repeated_results(account, page, total):
+    def handler(request):
+        return httpx.Response(200, json={"Code": 0, "Data": {"Items": page, "Total": total}})
+
+    with YicloudClient(account, transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(YicloudError, match="Pagination"):
+            paginated(
+                client,
+                "volume",
+                "ListQuotaGroupVolumes",
+                {
+                    "Project": "p",
+                    "QuotaGroup": "q",
+                    "Limit": 200,
+                },
+                True,
+            )
 
 
 def test_lifecycle_requests_reuse_platform_rules_without_cli():

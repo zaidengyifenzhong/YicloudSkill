@@ -5,4 +5,5 @@ recursive-include src/yicloud/skill *
 include install.sh install.ps1
 recursive-include tools *.py *.go *.json
 recursive-include tests *.py *.json
-recursive-include docs *.md
+include docs/architecture.md
+include docs/2026-10-20-cli-validation-issues.md

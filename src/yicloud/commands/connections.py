@@ -7,6 +7,7 @@ import click
 from .. import ssh
 from ..cli_support import account_for, emit, scope_for
 from ..errors import InputError
+from .connection_options import discovery_options, resolve_connection
 from .doctor import remote_doctor
 
 
@@ -71,17 +72,17 @@ def connection_commands(group, kind):
     group.add_command(connection)
 
     def connected(verb):
+        @discovery_options(kind)
         @click.option("--project")
         @click.option("--zone")
         @click.pass_context
-        def command(ctx, resource, project, zone, command=()):
+        def command(ctx, resource, project, zone, command=(), **options):
             if verb != "ssh-config" and ctx.obj["json"]:
                 raise InputError("SSH commands cannot use --json; use native process streams")
             if verb == "exec" and not command:
                 raise InputError("exec requires -- COMMAND [ARGS...]")
             project, zone = scope_for(ctx, project, zone, required=True)
-            a = account_for(ctx)
-            c = ssh.load(a.alias, kind, project, zone, resource)
+            c = resolve_connection(ctx, kind, resource, project, zone, **options)
             if verb == "ssh-config":
                 if ctx.obj["json"]:
                     emit(ctx, {"config": c.config(resource)})
@@ -101,13 +102,14 @@ def connection_commands(group, kind):
         group.add_command(connected(verb))
 
     @group.command("scp")
+    @discovery_options(kind)
     @click.option("--recursive", "-r", is_flag=True, help="Copy directories recursively.")
     @click.argument("source")
     @click.argument("destination")
     @click.option("--project")
     @click.option("--zone")
     @click.pass_context
-    def scp(ctx, source, destination, project, zone, recursive):
+    def scp(ctx, source, destination, project, zone, recursive, **options):
         if ctx.obj["json"]:
             raise InputError("scp cannot use --json")
 
@@ -120,7 +122,6 @@ def connection_commands(group, kind):
             raise InputError("Exactly one endpoint must be RESOURCE:/remote/path")
         resource = endpoints[0].split(":", 1)[0]
         project, zone = scope_for(ctx, project, zone, required=True)
-        a = account_for(ctx)
-        c = ssh.load(a.alias, kind, project, zone, resource)
+        c = resolve_connection(ctx, kind, resource, project, zone, **options)
         paths = [ssh.scp_endpoint(v, resource, c) for v in (source, destination)]
         ctx.exit(ssh.run(c, scp_paths=paths, recursive=recursive))

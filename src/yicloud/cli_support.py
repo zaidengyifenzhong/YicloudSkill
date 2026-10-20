@@ -61,6 +61,8 @@ class Root(click.Group):
                     click.echo("Request ID: " + redact(str(err.request_id), secrets), err=True)
                 if err.outcome_unknown:
                     click.echo("Remote outcome unknown; inspect state before retrying.", err=True)
+                for hint in err.hints:
+                    click.echo("Hint: " + redact(hint, secrets), err=True)
             if standalone:
                 raise SystemExit(1) from e
             raise err from e

@@ -2,16 +2,24 @@ class YicloudError(Exception):
     kind = "platform"
 
     def __init__(
-        self, message, *, request_id=None, code=None, outcome_unknown=False, http_status=None
+        self,
+        message,
+        *,
+        request_id=None,
+        code=None,
+        outcome_unknown=False,
+        http_status=None,
+        hints=(),
     ):
         super().__init__(message)
         self.request_id = request_id
         self.code = code
         self.outcome_unknown = outcome_unknown
         self.http_status = http_status
+        self.hints = list(hints)
 
     def as_dict(self):
-        return {
+        result = {
             "kind": self.kind,
             "message": str(self),
             "code": self.code,
@@ -19,6 +27,9 @@ class YicloudError(Exception):
             "outcome_unknown": self.outcome_unknown,
             "http_status": self.http_status,
         }
+        if self.hints:
+            result["hints"] = self.hints
+        return result
 
 
 class ConfigurationError(YicloudError):

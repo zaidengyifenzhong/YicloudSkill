@@ -5,6 +5,7 @@ from pathlib import Path
 import click
 
 from ..catalog import catalog, operation, request_schema
+from ..command_routes import command_routes
 from ..cli_support import client_for, emit, emit_result, read_json
 from ..errors import InputError
 
@@ -18,6 +19,7 @@ def api():
 @click.option("--service")
 @click.pass_context
 def api_list(ctx, service):
+    routes = command_routes()
     rows = [
         {
             k: op[k]
@@ -28,6 +30,9 @@ def api_list(ctx, service):
     ]
     if service and not rows:
         raise InputError(f"Unknown service: {service}")
+    for row in rows:
+        route = routes.get((row["service"], row["action"]))
+        row["command"] = "yicloud " + " ".join(route) if route else None
     emit(ctx, rows)
 
 
@@ -37,6 +42,7 @@ def api_list(ctx, service):
 @click.pass_context
 def api_describe(ctx, service, action):
     op = operation(service, action)
+    route = command_routes().get((service, action))
     schema = request_schema(op)
     definitions = catalog()["definitions"][service]
     reachable = {}
@@ -56,7 +62,12 @@ def api_describe(ctx, service, action):
     visit(schema)
     emit(
         ctx,
-        dict(op, schema=schema, definitions=reachable),
+        dict(
+            op,
+            schema=schema,
+            definitions=reachable,
+            command="yicloud " + " ".join(route) if route else None,
+        ),
         schema=True,
     )
 

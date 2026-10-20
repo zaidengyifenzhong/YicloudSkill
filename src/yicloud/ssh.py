@@ -41,8 +41,11 @@ class Connection:
     identity: str = ""
     proxy_jump: str = ""
     ssh_flags: str = ""
+    forward_agent: bool | None = None
 
     def __post_init__(self):
+        if self.forward_agent is not None and type(self.forward_agent) is not bool:
+            raise InputError("SSH forward_agent must be a boolean or null")
         for field in ("host", "user", "identity", "proxy_jump", "ssh_flags"):
             if not isinstance(getattr(self, field), str):
                 raise InputError(f"SSH {field} must be a string")
@@ -115,8 +118,12 @@ class Connection:
     def options(self, scp=False):
         result = []
         for flag in self.ssh_flags:
+            if flag == "A" and self.forward_agent is not None:
+                continue
             if not scp or flag in "CA":
                 result.append("-" + flag)
+        if self.forward_agent is not None:
+            result += ["-o", "ForwardAgent=" + ("yes" if self.forward_agent else "no")]
         if self.port is not None:
             result += ["-P" if scp else "-p", str(self.port)]
         if self.identity:
@@ -148,7 +155,9 @@ class Connection:
                 lines.append(f'    {key} "{escaped}"')
         if "C" in self.ssh_flags:
             lines.append("    Compression yes")
-        if "A" in self.ssh_flags:
+        if self.forward_agent is not None:
+            lines.append("    ForwardAgent " + ("yes" if self.forward_agent else "no"))
+        elif "A" in self.ssh_flags:
             lines.append("    ForwardAgent yes")
         if "X" in self.ssh_flags or "Y" in self.ssh_flags:
             lines.append("    ForwardX11 yes")
@@ -165,19 +174,27 @@ def key(account, kind, project, zone, resource):
 
 def save(account, kind, project, zone, resource, connection):
     state = read_state()
-    state.setdefault("connections", {})[key(account, kind, project, zone, resource)] = asdict(
-        connection
-    )
+    value = asdict(connection)
+    if value["forward_agent"] is None:
+        del value["forward_agent"]
+    state.setdefault("connections", {})[key(account, kind, project, zone, resource)] = value
     write_state(state)
 
 
 def load(account, kind, project, zone, resource):
-    value = read_state().get("connections", {}).get(key(account, kind, project, zone, resource))
-    if value is None:
+    connection = find(account, kind, project, zone, resource)
+    if connection is None:
         raise ConfigurationError(
             "No SSH connection for this account/project/zone/resource; use connection set with the platform-provided SSH command"
         )
-    return stored_connection(value)
+    return connection
+
+
+def find(account, kind, project, zone, resource):
+    """Return None only for an absent registration, never for a corrupt one."""
+    values = read_state().get("connections", {})
+    identity = key(account, kind, project, zone, resource)
+    return stored_connection(values[identity]) if identity in values else None
 
 
 def run(connection, command=(), *, scp_paths=None, recursive=False):

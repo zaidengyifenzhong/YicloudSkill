@@ -33,9 +33,9 @@ def timestamp_ns(value):
     return (delta.days * 86400 + delta.seconds) * 10**9 + int((fraction or "").ljust(9, "0"))
 
 
-def duration_ns(value):
-    match = re.fullmatch(r"([1-9]\d*)(s|m|h|d)", value)
+def duration_ns(value, *, option="--since"):
+    match = re.fullmatch(r"([1-9]\d*)(s|m|h|d)", value) if isinstance(value, str) else None
     if not match:
-        raise InputError("--since requires a positive whole duration, e.g. 30s, 15m, 2h, 1d")
+        raise InputError(f"{option} requires a positive whole duration, e.g. 30s, 15m, 2h, 1d")
     number, unit = match.groups()
     return int(number) * {"s": 1, "m": 60, "h": 3600, "d": 86400}[unit] * 10**9

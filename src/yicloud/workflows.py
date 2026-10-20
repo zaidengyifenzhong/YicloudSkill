@@ -74,6 +74,7 @@ def items(data):
     if isinstance(data, dict):
         for key in (
             "Items",
+            "Files",
             "items",
             "List",
             "list",
@@ -94,25 +95,40 @@ def paginated(client, service, action, params, all_pages=False):
         return client.call(service, action, params)
     params.setdefault("Limit", 20)
     params.setdefault("Offset", 0)
+    if all_pages and (
+        type(params["Limit"]) is not int
+        or params["Limit"] <= 0
+        or type(params["Offset"]) is not int
+        or params["Offset"] < 0
+    ):
+        raise InputError("Pagination requires a positive Limit and a non-negative Offset")
     result = client.call(service, action, params)
     if not all_pages:
         return result
-    combined = list(items(result.data))
+    combined = []
     previous = set()
-    page = items(result.data)
-    while len(page) == params["Limit"]:
-        fingerprint = json.dumps(page, sort_keys=True)
-        if fingerprint in previous:
-            raise YicloudError("Pagination did not advance; server repeated a page")
-        previous.add(fingerprint)
-        params["Offset"] += len(page)
-        next_result = client.call(service, action, params)
-        page = items(next_result.data)
+    current = result
+    while True:
+        page = items(current.data)
+        if page:
+            fingerprint = json.dumps(page, sort_keys=True)
+            if fingerprint in previous:
+                raise YicloudError("Pagination did not advance; server repeated a page")
+            previous.add(fingerprint)
         combined.extend(page)
-        if isinstance(next_result.data, dict) and len(combined) >= next_result.data.get(
-            "Total", float("inf")
-        ):
+        offset = params["Offset"] + len(page)
+        total = current.data.get("Total") if isinstance(current.data, dict) else None
+        if type(total) is int and total >= 0:
+            # A server may cap Limit. Its total, rather than the requested page size,
+            # determines whether a short page is actually the last one.
+            if offset >= total:
+                break
+            if not page:
+                raise YicloudError("Pagination ended before the advertised total; retry the query")
+        elif len(page) < params["Limit"]:
             break
+        params["Offset"] = offset
+        current = client.call(service, action, params)
     result.data = {"Items": combined, "Total": len(combined)}
     return result
 
@@ -298,7 +314,7 @@ def follow_logs(client, kind, params, emit, *, interval=3, sleep=time.sleep, clo
             start = max(start, max(timestamps))
         elif len(batch) >= params.get("Limit", 200):
             raise YicloudError("Log window is full without timestamps; query a narrower range")
-        else:
-            start = max(start, end - 3 * 10**9)
+        # An empty query is not a watermark: logs may reach the index much later
+        # than their event timestamp. Keep the start until a timestamp is observed.
         seen = next_seen
         sleep(interval)

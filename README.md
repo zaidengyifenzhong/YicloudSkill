@@ -61,7 +61,28 @@ yicloud job logs JOB_ID --project PROJECT --zone ZONE --follow
 
 `PROJECT`、`ZONE` 和 `JOB_ID` 需替换为实际值。`job.json` 可从仓库中的[请求示例](src/yicloud/skill/assets/examples)复制并修改；`dry-run` 仅校验本地请求，不提交任务。
 
-更多命令通过 `yicloud --help` 查看。复杂请求可先用 `api describe` 查询字段，再通过通用 API 调用：
+已实现的 225 个 HTTP 操作均有专用命令入口。常用工作流使用 `job create`、`workspace stop` 等简短命令；其他操作通常按 API 名称转为短横线形式，例如 `volume create-volume`、`dataset list-data-sets`。`inferset` 接口放在 `serving` 下，旧版文件存储放在 `fs alpha` 下。通过 `api list --service SERVICE` 的 `command` 字段可查准确入口，具体参数用子命令 `--help` 查看。
+
+```bash
+# 修改训练优先级（Job 编辑接口不用于修改训练启动命令）
+yicloud job edit JOB_ID --project PROJECT --operation priority --priority 5 --dry-run
+
+# 修改开发机名称；显式布尔值可以传 false
+yicloud workspace edit WORKSPACE_ID --project PROJECT --zone ZONE \
+  --name new-name --internet false --dry-run
+
+# 更新推理服务，数组与对象参数使用 JSON
+yicloud serving update INFERSET_ID --project PROJECT \
+  --image example/image:tag --command '["python", "serve.py"]' --dry-run
+
+yicloud dataset list-data-sets --project PROJECT --all
+yicloud volume create-volume --help
+yicloud registry list-public-images --help
+```
+
+新增命令支持 `--file` 完整请求或字段参数，两者互斥。布尔参数传 `true/false`；对象和数组传 JSON；需要显式 null 时可用 `--set 'Description=null'`。`job edit`、`workspace edit`、`serving update` 的位置参数为资源 ID，不是显示名称。请求文件模式不与位置参数混用，文件中填写完整 ID 和范围。旧命令的参数约定保持不变。
+
+复杂请求可先用 `api describe` 查询嵌套字段，再通过专用命令的 `--file` 或通用 API 调用：
 
 ```bash
 yicloud api describe job CreateJob
@@ -86,7 +107,9 @@ yicloud workspace doctor devbox
 yicloud skill status --target all
 ```
 
-`devbox` 是已登记的本地 SSH 连接键。`--no-context` 忽略当前上下文；没有项目目录自动发现。0.2 的 job 快捷命令默认 `sh -c`，原先依赖登录初始化的调用加 `--login-shell`。请求文件的 Command 数组不变。等待超时不停止远端任务；目录复制不是增量同步。
+`devbox` 可为已登记的连接或开发机名称；未登记时自动查询并生成 SSH 连接，名称查找可加 `--lookup-set 'Creator="PLATFORM_USER"'`，也可直接传 WorkspaceId。首次需向平台登记公钥。自动连接默认开启 Agent 转发，可用 `--no-forward-agent` 关闭；详见[SSH 指引](src/yicloud/skill/references/workspace-ssh.md)。
+
+`--no-context` 忽略当前上下文；没有项目目录自动发现。0.2 的 job 快捷命令默认 `sh -c`，原先依赖登录初始化的调用加 `--login-shell`。请求文件的 Command 数组不变。等待超时不停止远端任务；目录复制不是增量同步。
 
 上下文、诊断和输出契约见[开发工具](src/yicloud/skill/references/developer-tools.md)。远端长任务可使用 Job 或 Ray；SSH exec 为同步执行，SCP 为完整文件复制。
 
@@ -112,8 +135,9 @@ with YicloudClient.from_account("research") as client:
 - [存储](src/yicloud/skill/references/storage.md) · [镜像、模型与数据集](src/yicloud/skill/references/assets.md)
 - [端到端工作流](src/yicloud/skill/references/workflows.md)
 - [API 说明](src/yicloud/skill/references/api.md) · [接口支持矩阵](src/yicloud/skill/references/support.md)
+- [CLI 完善与真实任务验证问题记录](docs/2026-10-20-cli-validation-issues.md)
 
-当前基于仪电智算云 Go SDK v0.5.1，实现 225 个 HTTP 操作。网页终端与 WebSocket 日志暂不支持，日志跟随使用轮询。已实测 `.com.cn` 的 HMAC、部分只读接口和 Mac 上的 SSH/SFTP；临时 CPU 开发机的创建、等待、删除已实测；Job/Ray/Serving 写操作、Token 与服务账号认证尚未联机验证。
+当前基于仪电智算云 Go SDK v0.5.1，实现固定目录中的 225 个 HTTP 操作；该数量不等于线上控制台的全部路由。网页终端与 WebSocket 日志暂不支持，日志跟随使用轮询。已实测 `.com.cn` 的 HMAC、部分只读接口和 Mac 上的 SSH/SFTP；临时 CPU 开发机的创建、等待、删除，以及单副本 CPU Job 的创建、运行、日志、跨任务 GPFS 产物校验、停止和删除已实测。GPU/多副本 Job、Ray/Serving 写操作、Token 与服务账号认证尚未联机验证。实际问题与证据范围见[验证问题记录](docs/2026-10-20-cli-validation-issues.md)。
 
 ## 开发
 

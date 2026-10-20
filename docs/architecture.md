@@ -19,6 +19,7 @@ cli.py → commands/ → creation.py / workflows.py
 | 模块 | 职责 |
 |---|---|
 | `commands/` | 按操作声明参数，适配业务函数和输出 |
+| `command_routes.py`、`commands/catalog_commands.py` | 稳定的接口到命令映射；为缺失入口生成类型化字段参数，复用现有校验、上下文、分页和客户端 |
 | `cli_support.py` | CLI 输入、账号选择、脱敏和错误呈现 |
 | `creation.py` | 快捷创建参数转为平台请求，校验资源规格组合 |
 | `workflows.py` | 能力映射、资源定位、分页、请求构造、等待与日志轮询 |
@@ -29,6 +30,7 @@ cli.py → commands/ → creation.py / workflows.py
 | `context.py`、`time_input.py` | 命名范围解析与无浮点纳秒转换，CLI context 不进入 Python 客户端 |
 | `diagnostics.py` | 只读本地/API/SSH 检查，返回有界证据，不自动修复 |
 | `config.py`、`ssh.py` | 账号与连接配置、本机 SSH 进程 |
+| `connection_resolver.py` | 登记连接优先；开发机实时身份、共享路由及公开网关配置解析 |
 | `skill_install.py` | 包内 Skill 的安装、冲突检查和卸载 |
 
 ## 一次请求
@@ -39,7 +41,7 @@ cli.py → commands/ → creation.py / workflows.py
 
 ## 设计取舍
 
-- **目录驱动 API，显式设计命令。** 目录覆盖公开接口，常用命令只展示当前操作支持的选项，避免为每个接口写一套客户端方法。
+- **目录驱动 API 与字段命令，保留显式工作流。** 常用工作流继续使用手写命令；其他 HTTP 操作按稳定路由生成专用命令和类型化字段选项。`api list/describe` 给出实际入口；不注册尚未实现的 WebSocket 操作。所有入口复用同一客户端，不重复实现协议。
 - **复用业务规则。** 命令层不决定批量删除格式、字段大小写或状态终态；这些规则可独立测试。
 - **保留平台差异。** Ray 使用 JobName，部署使用 ID；不假设不同服务共享响应结构，也不从 Pod IP 推导 SSH 网关。
 - **同步客户端与原生 SSH。** 当前工作流无需异步框架；原生 SSH 保留主机密钥校验、stdin 和远端退出码。

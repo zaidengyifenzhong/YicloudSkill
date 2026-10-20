@@ -2,10 +2,11 @@
 
 import click
 
-from .. import diagnostics, ssh
+from .. import diagnostics
 from ..cli_support import account_for, emit, scope_for
 from ..client import YicloudClient
 from ..errors import YicloudError
+from .connection_options import discovery_options, resolve_connection
 
 
 def report(ctx, rows):
@@ -38,22 +39,22 @@ def api(ctx, project, zone):
 
 def remote_doctor(kind):
     @click.argument("resource")
+    @discovery_options(kind)
     @click.option("--project")
     @click.option("--zone")
     @click.option(
         "--timeout", type=click.IntRange(1, 60), default=8, help="Timeout per SSH probe in seconds."
     )
     @click.pass_context
-    def command(ctx, resource, project, zone, timeout):
+    def command(ctx, resource, project, zone, timeout, **options):
         project, zone = scope_for(ctx, project, zone, required=True)
-        a = account_for(ctx)
         try:
-            connection = ssh.load(a.alias, kind, project, zone, resource)
+            connection = resolve_connection(ctx, kind, resource, project, zone, **options)
         except YicloudError as e:
             report(ctx, [diagnostics.check("ssh.connection", "fail", str(e))])
             return
         report(ctx, diagnostics.remote_checks(connection, timeout))
 
     return click.command(
-        "doctor", help="Read-only SSH, disk and GPU probes on a saved connection."
+        "doctor", help="Read-only SSH, disk and GPU probes using a saved or resolved connection."
     )(command)

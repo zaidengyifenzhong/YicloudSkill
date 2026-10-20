@@ -20,6 +20,7 @@ coverage.xml
 # Local credentials, configuration, and private asset records
 YICLOUD.md
 /AGENTS.md
+/docs/*-feedback.md
 .env
 .env.*
 !.env.example

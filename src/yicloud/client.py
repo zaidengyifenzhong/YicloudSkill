@@ -8,11 +8,12 @@ from urllib.parse import parse_qsl
 import httpx
 
 from .config import Account
-from .errors import InputError
+from .errors import InputError, YicloudError
 from .output import redact, secret_values
 from .protocol import decode_response, prepare_request
 from .protocol import encode_query as encode_query  # Retain the existing import path.
 from .protocol import scalar as scalar
+from .request_diagnostics import request_failure_hints
 from .transport import HttpTransport
 
 
@@ -71,5 +72,9 @@ class YicloudClient:
             response.request.headers.get("Authorization", ""),
             *secret_values(params),
         ]
-        data = decode_response(op, response, output=output, secrets=secrets)
+        try:
+            data = decode_response(op, response, output=output, secrets=secrets)
+        except YicloudError as error:
+            error.hints.extend(request_failure_hints(service, action, params, error))
+            raise
         return Result(data, redact(response.headers.get("X-OGW-Request-Id"), secrets), response)

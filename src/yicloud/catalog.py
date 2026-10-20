@@ -43,7 +43,15 @@ def validate(op, value, allow_unknown=False):
         if typ in checks and not checks[typ]():
             raise InputError(f"{path}: expected {typ}")
         if "enum" in s and str(v) not in s["enum"]:
-            raise InputError(f"{path}: expected one of {s['enum']}")
+            raise InputError(
+                f"{path}: expected one of {s['enum']}",
+                hints=[
+                    f"Allowed values come from the bundled SDK {catalog()['sdk_version']} "
+                    "catalog. If the live platform reports another value, verify its API "
+                    "contract before updating the catalog; --allow-unknown-fields does not "
+                    "bypass enum validation."
+                ],
+            )
         if typ == "object":
             for k in s.get("required", []):
                 if k not in v or v[k] is None:

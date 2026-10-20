@@ -93,11 +93,37 @@ def create_command(kind):
         for name in reversed(
             ("name", "project", "zone", "image", "sku", "quota-group", "cpu", "memory", "gpu")
         ):
-            command = click.option(f"--{name}")(command)
+            help_text = (
+                "GPU count; defaults to 0 for quota-mode job shortcuts."
+                if name == "gpu" and kind == "job"
+                else None
+            )
+            command = click.option(f"--{name}", help=help_text)(command)
         command = click.option("--sku-scope", type=click.Choice(["public", "tenant", "project"]))(
             command
         )
         if kind == "job":
+            command = click.option(
+                "--use-private-machine/--no-use-private-machine",
+                default=None,
+                help="Explicitly select private-machine scheduling; omitted by default.",
+            )(command)
+            command = click.option(
+                "--qos", help="Platform QoS value, e.g. Guaranteed; omitted by default."
+            )(command)
+            command = click.option(
+                "--priority",
+                type=click.IntRange(1, 9),
+                help="Scheduling priority; omitted by default so the platform chooses.",
+            )(command)
+            for duration_option, phase in (
+                ("--max-wait-duration", "waiting"),
+                ("--max-running-duration", "running"),
+            ):
+                command = click.option(
+                    duration_option,
+                    help=f"Task {phase} limit (30s, 15m, 2h, 1d); sent as seconds. Omitted by default.",
+                )(command)
             command = click.option(
                 "--login-shell",
                 is_flag=True,

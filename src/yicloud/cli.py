@@ -11,6 +11,7 @@ from .commands.api import api
 from .commands.discovery import register_discovery
 from .commands.skills import skill
 from .commands.workloads import register_workloads
+from .commands.catalog_commands import register_catalog_commands
 
 
 @click.group(cls=Root)
@@ -47,3 +48,4 @@ main.add_command(doctor)
 main.add_command(skill)
 register_discovery(main)
 register_workloads(main)
+register_catalog_commands(main)

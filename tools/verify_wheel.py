@@ -52,7 +52,44 @@ with tempfile.TemporaryDirectory(prefix="yicloud-wheel-") as scratch:
         )
         return json.loads(result.stdout)
 
-    assert len(call("--json", "api", "list")["data"]) == 227
+    operations = call("--json", "api", "list")["data"]
+    assert len(operations) == 227
+    assert sum(row["command"] is not None for row in operations) == 225
+    assert (
+        call("--json", "api", "describe", "job", "EditJob")["data"]["command"] == "yicloud job edit"
+    )
+    edited = call(
+        "--json",
+        "job",
+        "edit",
+        "fixture-job",
+        "--project",
+        "p",
+        "--operation",
+        "priority",
+        "--priority",
+        "5",
+        "--dry-run",
+    )["data"]["body"]
+    assert edited == {
+        "JobId": "fixture-job",
+        "Project": "p",
+        "Operation": "priority",
+        "Priority": "5",
+    }
+    bucket = call(
+        "--json",
+        "oss",
+        "create-bucket",
+        "--project",
+        "p",
+        "--bucket",
+        "fixture-bucket",
+        "--capacity",
+        "0",
+        "--dry-run",
+    )["data"]["body"]
+    assert bucket == {"Project": "p", "Bucket": "fixture-bucket", "Capacity": 0}
     sku = call("--json", "api", "describe", "mc", "ListSKUs")["data"]
     assert sku["definitions"] == {}  # This request has no referenced types.
     assert call("--json", "api", "describe", "job", "CreateJob")["data"]["schema"]["required"]
