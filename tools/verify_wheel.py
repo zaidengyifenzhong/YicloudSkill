@@ -150,6 +150,46 @@ with tempfile.TemporaryDirectory(prefix="yicloud-wheel-") as scratch:
     installed = call("--json", "skill", "status", "--target", "codex", "--path", str(skill))["data"]
     assert installed["targets"][0]["state"] == "matching"
     assert installed["version"]  # Taken from package metadata, not a second version constant.
+    helper = skill / "scripts/request_from_preview.py"
+    assert helper.is_file() and not helper.is_symlink()
+    preview = call(
+        "--json",
+        "job",
+        "create",
+        "--name",
+        "fixture",
+        "--project",
+        "p",
+        "--zone",
+        "z",
+        "--image",
+        "fixture/image",
+        "--quota-group",
+        "quota",
+        "--cpu",
+        "2",
+        "--memory",
+        "8Gi",
+        "--command",
+        "printf '你好'",
+        "--dry-run",
+    )
+    request_file = root / "exported-request.json"
+    exported = subprocess.run(
+        [str(python), "-I", "-S", str(helper), "--output", str(request_file)],
+        input=json.dumps(preview, ensure_ascii=False),
+        cwd=root,
+        text=True,
+        encoding="utf-8",
+        capture_output=True,
+        check=True,
+    )
+    assert not exported.stdout and not exported.stderr
+    assert json.loads(request_file.read_text(encoding="utf-8")) == preview["data"]["body"]
+    assert (
+        call("--json", "job", "create", "--file", str(request_file), "--dry-run")["data"]["body"]
+        == preview["data"]["body"]
+    )
     result = call(
         "--json",
         "job",

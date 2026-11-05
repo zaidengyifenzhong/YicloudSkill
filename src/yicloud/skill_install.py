@@ -57,11 +57,13 @@ def digest(path):
 
 
 def packaged_files(source):
-    """Match the skill's distributed instruction files, including source checkouts."""
+    """Match distributed instructions and Python helpers, including source checkouts."""
     return {
         p.relative_to(source).as_posix(): digest(p)
         for p in source.rglob("*")
-        if p.is_file() and p.suffix in {".md", ".yaml"}
+        if p.is_file()
+        and not p.is_symlink()
+        and (p.suffix in {".md", ".yaml"} or (p.parent == source / "scripts" and p.suffix == ".py"))
     }
 
 

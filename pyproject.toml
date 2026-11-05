@@ -22,7 +22,7 @@ yicloud = "yicloud.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-yicloud = ["data/*.json", "skill/**/*.md", "skill/**/*.yaml", "skill/*.md"]
+yicloud = ["data/*.json", "skill/**/*.md", "skill/**/*.yaml", "skill/*.md", "skill/scripts/*.py"]
 
 [tool.setuptools.exclude-package-data]
 yicloud = ["*.log", "**/*.log"]

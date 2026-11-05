@@ -16,6 +16,18 @@
 
 使用持久输出路径时，先按[存储手册](../storage.md)确认挂载和消费者权限。离线环境按[环境准备](../environment.md)准备，避免运行时隐式公网下载。
 
+### 快捷请求需要保存为 JSON 时
+
+仅当快捷参数能完整表达需求且用户需要请求文件时，对原快捷命令使用 `--json` 和 `--dry-run`，将成功预览交给[提取脚本](../../scripts/request_from_preview.py)。无需文件时继续使用原快捷命令；复杂拓扑仍按 describe 构造完整文件。
+
+`skill_dir` 是当前所读 `SKILL.md` 所在目录的真实路径，`preview_file` 是已有的 UTF-8 JSON 预览，`request_file` 是用户指定的新文件路径。使用本机可用的 Python 3.10+ 解释器执行：
+
+```bash
+python "$skill_dir/scripts/request_from_preview.py" --input "$preview_file" --output "$request_file"
+```
+
+也可将原 `yicloud --json job create … --dry-run` 的 stdout 通过管道交给脚本，省略 `--input`。脚本仅原样提取 body，不读取账号、不联网、不补字段；拒绝已标记脱敏的内容和已有输出路径，但不保证识别未标记的秘密。导出后仍须执行下文的 `job create --file … --dry-run` 校验。
+
 ## 确认启动依赖
 
 启动命令中的解释器、脚本和必要程序必须与目标镜像及挂载匹配。本机安装了 Python、镜像标签包含 Python 版本或 dry-run 通过，都不能证明容器内存在 `python` 命令。
