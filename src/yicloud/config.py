@@ -106,9 +106,11 @@ class Account:
         Callers passing an alias select it explicitly by default. CLI context
         selection can opt out because it is a default, not an --account argument.
         """
+        if alias is not None and not isinstance(alias, str):
+            raise InputError("Account alias must be a string or None")
         state = read_state()
-        selected = alias or state.get("current")
-        if selected and selected not in state["accounts"]:
+        selected = state.get("current") if alias is None else alias
+        if selected is not None and selected not in state["accounts"]:
             raise ConfigurationError(f"Unknown account: {selected}")
         values = dict(state["accounts"].get(selected, {}))
         auth_keys = (
@@ -154,6 +156,6 @@ class Account:
             region or os.getenv("YICLOUD_REGION_ID") or values.get("region") or cls.region
         )
         try:
-            return cls(alias=selected or "environment", **values)
+            return cls(alias="environment" if selected is None else selected, **values)
         except TypeError as e:
             raise ConfigurationError("Account contains unknown configuration fields") from e

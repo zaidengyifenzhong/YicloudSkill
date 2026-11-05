@@ -66,7 +66,7 @@ def show_context(ctx):
         else "context"
         if "account" in values
         else "current_account"
-        if read_state().get("current")
+        if read_state().get("current") is not None
         else "environment/default"
     )
     for key, env_name in (("host", "YICLOUD_API_HOST"), ("region", "YICLOUD_REGION_ID")):
