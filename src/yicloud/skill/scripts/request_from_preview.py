@@ -50,6 +50,9 @@ def request_bytes(text):
 
 
 def write_new(path, payload):
+    # Windows CRT may follow a dangling symlink despite O_CREAT | O_EXCL.
+    if path.is_symlink():
+        raise FileExistsError("Output path is a symbolic link")
     descriptor = os.open(
         path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o600
     )

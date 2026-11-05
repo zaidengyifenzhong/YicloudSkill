@@ -127,6 +127,8 @@ def test_helper_never_replaces_existing_paths_or_creates_parents(tmp_path, previ
             output.symlink_to(existing if kind == "symlink" else tmp_path / "absent")
         except OSError:
             pytest.skip("Symlink creation is unavailable")
+        link_target = output.readlink()
+        assert not (tmp_path / "absent").exists()
     else:
         output = tmp_path / "absent-parent" / "request.json"
     result, _ = export(tmp_path, json.dumps(preview).encode(), output=output)
@@ -137,7 +139,8 @@ def test_helper_never_replaces_existing_paths_or_creates_parents(tmp_path, previ
     elif kind == "directory":
         assert output.is_dir()
     elif kind in {"symlink", "dangling_symlink"}:
-        assert output.is_symlink() and not (tmp_path / "absent").exists()
+        assert output.is_symlink() and output.readlink() == link_target
+        assert not (tmp_path / "absent").exists()
     else:
         assert not output.parent.exists()
 
