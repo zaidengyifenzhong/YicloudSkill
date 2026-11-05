@@ -152,6 +152,8 @@ def resolve(client, kind, value, project, zone, by_name=False, *, lookup=None):
     params.update(lookup)
     rows = items(paginated(client, w["service"], w["list"], params, True).data)
     fields = LIST_FIELDS[kind]
+    if any(not isinstance(row, dict) for row in rows):
+        raise YicloudError("Unrecognized resource in list response; name lookup is not verified")
     matches = [
         r
         for r in rows
@@ -169,8 +171,8 @@ def resolve(client, kind, value, project, zone, by_name=False, *, lookup=None):
         )
     row = matches[0]
     resource_id = row.get(fields["id"])
-    if not resource_id:
-        raise YicloudError("Matched resource has no identifier")
+    if not isinstance(resource_id, str) or not resource_id:
+        raise YicloudError("Matched resource has no identifier (expected a non-empty string)")
     return resource_id
 
 
@@ -510,6 +512,8 @@ def follow_logs(client, kind, params, emit, *, interval=3, sleep=time.sleep, clo
             query.update(Start=start, End=end, Direction="forward")
         result = client.call(w["service"], w["logs"], query)
         batch = items(result.data)
+        if any(not isinstance(row, dict) for row in batch):
+            raise YicloudError("Unrecognized log entry; expected an object")
         next_seen = set()
         timestamps = []
         for row in batch:
@@ -517,15 +521,20 @@ def follow_logs(client, kind, params, emit, *, interval=3, sleep=time.sleep, clo
             next_seen.add(mark)
             if mark not in seen:
                 emit(row)
-            try:
-                timestamps.append(int(row["Timestamp"]))
-            except (TypeError, KeyError, ValueError):
-                pass
+            timestamp = row.get("Timestamp")
+            if type(timestamp) is int or isinstance(timestamp, str):
+                try:
+                    timestamps.append(int(timestamp))
+                except ValueError:
+                    pass
         # Keep the boundary inclusive; overlapping rows are deduplicated, retaining only two batches.
-        if timestamps:
-            start = max(start, max(timestamps))
-        elif len(batch) >= params.get("Limit", 200):
-            raise YicloudError("Log window is full without timestamps; query a narrower range")
+        next_start = max(start, max(timestamps)) if timestamps else start
+        if len(batch) >= params.get("Limit", 200) and next_start == start:
+            raise YicloudError(
+                "Log window is full and cannot advance without skipping entries; "
+                "increase --limit, filter --instance, or query a narrower time range"
+            )
+        start = next_start
         # An empty query is not a watermark: logs may reach the index much later
         # than their event timestamp. Keep the start until a timestamp is observed.
         seen = next_seen

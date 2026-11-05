@@ -11,4 +11,5 @@ prune reports
 prune audits
 prune issues
 prune logs
+prune evals
 global-exclude *.log .DS_Store

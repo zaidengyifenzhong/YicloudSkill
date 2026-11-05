@@ -120,6 +120,88 @@ def test_name_dry_run_only_reads(account, monkeypatch):
 
 
 @pytest.mark.parametrize(
+    "kind,row",
+    [
+        ("workspace", "unexpected-row"),
+        ("job", None),
+        ("ray", {"DisplayName": "friendly", "Namespace": "p", "ZoneId": "z", "RayJobName": 1}),
+        ("serving", {"Name": "friendly", "Namespace": "p", "ZoneId": "z", "ID": True}),
+    ],
+)
+def test_name_lookup_invalid_response_retains_json_error_contract(account, monkeypatch, kind, row):
+    calls = []
+
+    def handler(request):
+        calls.append(request.method)
+        return httpx.Response(200, json={"Code": 0, "Data": {"Items": [row]}})
+
+    monkeypatch.setattr(
+        "yicloud.commands.workloads.client_for",
+        lambda _: YicloudClient(account, transport=httpx.MockTransport(handler)),
+    )
+    result = CliRunner().invoke(
+        main,
+        [
+            "--json",
+            kind,
+            "stop",
+            "friendly",
+            "--by-name",
+            "--project",
+            "p",
+            "--zone",
+            "z",
+            "--dry-run",
+        ],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["ok"] is False and payload["error"]["kind"] == "platform"
+    assert calls == ["GET"]
+
+
+@pytest.mark.parametrize("kind", ["job", "ray", "serving"])
+def test_follow_full_boundary_reports_partial_logs_and_recovery(account, monkeypatch, kind):
+    calls = []
+
+    def handler(request):
+        calls.append(request.method)
+        return httpx.Response(
+            200,
+            json={
+                "Code": 0,
+                "Data": {"Items": [{"Timestamp": "0", "Line": "observed fixture log"}]},
+            },
+        )
+
+    monkeypatch.setattr(
+        "yicloud.commands.workloads.client_for",
+        lambda _: YicloudClient(account, transport=httpx.MockTransport(handler)),
+    )
+    result = CliRunner().invoke(
+        main,
+        [
+            kind,
+            "logs",
+            "fixture",
+            "--project",
+            "p",
+            "--zone",
+            "z",
+            "--start",
+            "0",
+            "--limit",
+            "1",
+            "--follow",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "observed fixture log" in result.output
+    assert "full and cannot advance" in result.output and "--limit" in result.output
+    assert calls == ["GET"]
+
+
+@pytest.mark.parametrize(
     "service,action", [("job", "StopJob"), ("job", "CreateJob"), ("ray", "CreateRayJob")]
 )
 def test_describe_contains_only_reachable_request_definitions(service, action):

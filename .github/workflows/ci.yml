@@ -23,6 +23,7 @@ jobs:
       - run: python -m pytest -q
       - run: python tools/check_catalog.py
       - run: python tools/validate_skill.py
+      - run: python tools/evaluate_skill.py
       - run: python -m build --no-isolation
       - name: Locate wheel
         shell: python

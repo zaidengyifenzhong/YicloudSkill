@@ -32,4 +32,6 @@ yicloud api call inferset DownloadInferSetLogs --file "$request_file" --output "
 
 GetInferSetLogsTail 和 GetInferSetTerminal 暂不支持。需要持续日志可用 CLI 的历史日志轮询 `--follow`，说明它不是 WebSocket 流；不能与 `--json`、`--dry-run`、`--end` 同用。不尝试用空 HTTP 握手模拟终端连接。
 
+同一时间戳占满上限而无法推进时，轮询保留已输出日志并报错退出。增加 `--limit`、筛选 `--instance` 或分段查询核对；退出不证明日志完整。
+
 报告部署、时间范围、实例筛选和日志或文件结果。日志仅是诊断证据，不单独证明部署健康。

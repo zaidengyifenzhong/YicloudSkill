@@ -52,3 +52,6 @@ YICLOUD.md
 *.swp
 *.swo
 .DS_Store
+
+# Session-local evaluation history
+/evals/iterations.md

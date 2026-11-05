@@ -28,6 +28,8 @@ yicloud job logs "$job_id" --start "$start_time" --end "$end_time"
 
 需要持续观察时使用 `--follow`，它是轮询，不能与 `--json`、`--dry-run` 或 `--end` 同用，不承诺日志严格恰好一次。空日志可能是索引延迟，扩大到覆盖启动时间的单次查询交叉核对。
 
+同一时间戳占满查询上限、无法继续推进时，CLI 保留已输出日志并报错退出；增加 `--limit`、筛选 `--instance`，或改用分段历史查询核对，不能把退出当作日志已全部读取。
+
 ## 失败取证
 
 在删除或重建前，保存本次任务的 status、覆盖实际运行窗口的日志及 replicas。需要副本详情时，从 replicas 返回的真实 Name 调用 `job get-job-replica --help` 指定的查询；不要把任务 ID 当作副本名称。记录原始命令、错误信息、退出码及 request_id，隐藏凭据，不采集无关任务内容。

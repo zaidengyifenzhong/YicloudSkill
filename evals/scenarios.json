@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "purpose": "Human or independent-agent skill selection and workflow assessment; not automated selector accuracy.",
+  "scenarios": [
+    {
+      "id": "account-discovery",
+      "kind": "positive",
+      "request": "查看仪电智算云当前账号和可用区。",
+      "criteria": ["选择 yicloud", "按需读取 access.md", "以实时只读结果报告认证与范围，不报告凭据"]
+    },
+    {
+      "id": "existing-workspace-ssh",
+      "kind": "positive",
+      "request": "连接我指定的已有仪电开发机，执行 hostname。",
+      "criteria": ["选择 workspace/connect.md", "使用实时或已核实连接信息", "不创建新开发机", "保留远端退出状态"]
+    },
+    {
+      "id": "submit-only",
+      "kind": "positive",
+      "request": "使用已提供的完整请求提交仪电训练任务，不等待结束。",
+      "criteria": ["选择 jobs/run.md", "校验请求后按授权提交", "核实 JobId 和当前状态", "不将提交接受解释成训练完成"]
+    },
+    {
+      "id": "persistent-artifact",
+      "kind": "positive",
+      "request": "在仪电运行训练并从后续消费环境验证持久输出文件。",
+      "criteria": ["选择 jobs/run.md 及 storage.md", "保留用户框架与资源选择", "验证终态、实际输出内容及后续读取"]
+    },
+    {
+      "id": "account-conflict",
+      "kind": "boundary",
+      "request": "仪电当前 context 与 --account 冲突怎么办？",
+      "criteria": ["选择 access.md", "检查实际来源与冲突", "不打印认证环境变量值或永久删除用户配置"]
+    },
+    {
+      "id": "ambiguous-delete",
+      "kind": "boundary",
+      "request": "按名称删除仪电资源，但查询得到两个同名资源。",
+      "criteria": ["停止写入并消歧", "不随机选择资源", "用户授权范围不能由同名推断"]
+    },
+    {
+      "id": "unknown-create-outcome",
+      "kind": "boundary",
+      "request": "仪电创建请求超时，现在按名称查不到资源，帮我处理。",
+      "criteria": ["结果仍可能未知", "考虑可见延迟并保留原始请求证据", "不能立即重复创建或冒认旧资源"]
+    },
+    {
+      "id": "saturated-log-page",
+      "kind": "boundary",
+      "request": "仪电日志满页且全部同一时间戳，继续查询会不会漏掉日志？",
+      "criteria": ["选择相关日志手册并检查 CLI 实际行为", "不能把日志视为已完整获取", "报告分页或时间精度限制，不无声等待"]
+    },
+    {
+      "id": "sdk-enum-drift",
+      "kind": "boundary",
+      "request": "仪电控制台支持的枚举被本地 SDK 校验拒绝，如何处理？",
+      "criteria": ["选择 diagnostics/compatibility.md", "区分固定 SDK 和实时平台能力", "不猜测接近枚举或擅自改变用户意图"]
+    },
+    {
+      "id": "local-python",
+      "kind": "negative",
+      "request": "给本机安装 Python。",
+      "criteria": ["无仪电平台上下文时不选择 yicloud", "不扩大任务到云平台"]
+    },
+    {
+      "id": "different-cloud",
+      "kind": "negative",
+      "request": "在其他云厂商创建 GPU 主机。",
+      "criteria": ["不选择 yicloud", "不替换用户指定平台"]
+    },
+    {
+      "id": "finance-sheet",
+      "kind": "negative",
+      "request": "整理财务表格中的云费用。",
+      "criteria": ["没有仪电平台查询语义时不选择 yicloud", "不访问平台账号或账单"]
+    }
+  ]
+}

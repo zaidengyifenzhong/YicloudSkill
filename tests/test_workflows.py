@@ -61,6 +61,43 @@ def test_name_lookup_enforces_scope(account):
         assert resolve(c, "workspace", "dev", "p", "z", True) == "good"
 
 
+@pytest.mark.parametrize("invalid", [None, "unexpected-row", [], 7])
+def test_name_lookup_rejects_malformed_rows_even_beside_a_match(account, invalid):
+    rows = [{"Name": "dev", "WorkspaceId": "w", "Project": "p", "ZoneId": "z"}, invalid]
+    with YicloudClient(
+        account,
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json={"Code": 0, "Data": {"Items": rows}})
+        ),
+    ) as client:
+        with pytest.raises(YicloudError, match="name lookup is not verified"):
+            resolve(client, "workspace", "dev", "p", "z", True)
+
+
+@pytest.mark.parametrize(
+    "kind,id_field,name_field,project_field",
+    [
+        ("workspace", "WorkspaceId", "Name", "Project"),
+        ("job", "JobId", "Name", "Project"),
+        ("ray", "RayJobName", "DisplayName", "Namespace"),
+        ("serving", "ID", "Name", "Namespace"),
+    ],
+)
+@pytest.mark.parametrize("identifier", [None, "", 123, True, {"id": "unexpected"}])
+def test_name_lookup_requires_a_string_identifier(
+    account, kind, id_field, name_field, project_field, identifier
+):
+    row = {id_field: identifier, name_field: "dev", project_field: "p", "ZoneId": "z"}
+    with YicloudClient(
+        account,
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json={"Code": 0, "Data": {"Items": [row]}})
+        ),
+    ) as client:
+        with pytest.raises(YicloudError, match="no identifier"):
+            resolve(client, kind, "dev", "p", "z", True)
+
+
 @pytest.mark.parametrize("phase", ["Failed", "Stopped", "Unknown", "new-future-state"])
 def test_wait_never_accepts_failure_or_unknown(account, phase):
     with YicloudClient(
@@ -166,6 +203,100 @@ def test_follow_does_not_skip_logs_indexed_after_an_empty_poll(account):
             )
     assert [int(query["Start"]) for query in calls] == [0, 0]
     assert emitted == [{"Timestamp": str(timestamp), "Line": "late-indexed-marker"}]
+
+
+@pytest.mark.parametrize("kind", ["job", "ray", "serving"])
+def test_follow_stops_when_a_full_timestamp_boundary_cannot_advance(account, kind):
+    calls = []
+    rows = [{"Timestamp": "100", "Line": "a"}, {"Timestamp": "100", "Line": "b"}]
+
+    def handler(request):
+        calls.append(dict(request.url.params))
+        assert len(calls) <= 2, "Full timestamp boundary must not poll indefinitely"
+        return httpx.Response(200, json={"Code": 0, "Data": {"Items": rows}})
+
+    emitted = []
+    id_field = {"job": "JobId", "ray": "JobName", "serving": "ID"}[kind]
+    params = log_params(kind, {"Project": "p", id_field: "resource"}, start=0, end=200, limit=2)
+    with YicloudClient(account, transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(YicloudError, match="full and cannot advance") as error:
+            follow_logs(
+                client, kind, params, emitted.append, sleep=lambda _: None, clock=lambda: 200
+            )
+    assert emitted == rows
+    start_field = "StartTime" if kind == "ray" else "Start"
+    assert [int(query[start_field]) for query in calls] == [0, 100]
+    assert "--limit" in str(error.value) and "--instance" in str(error.value)
+
+
+@pytest.mark.parametrize("timestamp", [None, "invalid", True, 1.5, {"ns": 100}])
+def test_follow_full_window_without_usable_timestamps_stops(account, timestamp):
+    emitted = []
+    rows = [{"Timestamp": timestamp, "Line": "a"}]
+    with YicloudClient(
+        account,
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json={"Code": 0, "Data": {"Items": rows}})
+        ),
+    ) as client:
+        with pytest.raises(YicloudError, match="full and cannot advance"):
+            follow_logs(
+                client,
+                "job",
+                {"Project": "p", "JobId": "j", "Limit": 1, "Start": 0},
+                emitted.append,
+                sleep=lambda _: pytest.fail("An unusable full log window must not sleep"),
+                clock=lambda: 200,
+            )
+    assert emitted == rows
+
+
+def test_follow_rejects_non_object_rows_before_emitting(account):
+    rows = [{"Timestamp": "100", "Line": "a"}, "unexpected-row"]
+    with YicloudClient(
+        account,
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json={"Code": 0, "Data": {"Items": rows}})
+        ),
+    ) as client:
+        with pytest.raises(YicloudError, match="Unrecognized log entry"):
+            follow_logs(
+                client,
+                "job",
+                {"Project": "p", "JobId": "j", "Limit": 2, "Start": 0},
+                lambda _: pytest.fail("Malformed log batches must not be emitted"),
+                clock=lambda: 200,
+            )
+
+
+def test_follow_allows_full_windows_that_advance(account):
+    starts = []
+    emitted = []
+
+    def handler(request):
+        start = int(request.url.params["Start"])
+        starts.append(start)
+        return httpx.Response(
+            200,
+            json={"Code": 0, "Data": {"Items": [{"Timestamp": str(start + 1), "Line": "a"}]}},
+        )
+
+    def sleep(_):
+        if len(starts) == 3:
+            raise KeyboardInterrupt()
+
+    with YicloudClient(account, transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(KeyboardInterrupt):
+            follow_logs(
+                client,
+                "job",
+                {"Project": "p", "JobId": "j", "Limit": 1, "Start": 0},
+                emitted.append,
+                sleep=sleep,
+                clock=lambda: 20,
+            )
+    assert starts == [0, 1, 2]
+    assert [row["Timestamp"] for row in emitted] == ["1", "2", "3"]
 
 
 def test_serving_pagination_accepts_nested_data_list(account):
