@@ -226,7 +226,11 @@ def scp_endpoint(value, resource, connection):
     if value.startswith(prefix):
         path = value[len(prefix) :]
         safe(path, "remote path")
-        return connection.destination + ":" + path
+        host = connection.host
+        if ":" in host and not (host.startswith("[") and host.endswith("]")):
+            host = f"[{host}]"
+        destination = (connection.user + "@" if connection.user else "") + host
+        return destination + ":" + path
     path = Path(value).expanduser()
     # Absolute local paths keep ':' and leading '-' from becoming scp options or remote operands.
     return str(path.absolute())

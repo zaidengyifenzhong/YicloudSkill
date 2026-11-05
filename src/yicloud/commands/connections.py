@@ -113,9 +113,15 @@ def connection_commands(group, kind):
         if ctx.obj["json"]:
             raise InputError("scp cannot use --json")
 
-        # Windows drive letters are local paths, never resource aliases.
+        # A path separator before ':' and Windows drive letters denote local paths.
         def remote(v):
-            return ":" in v and not (len(v) >= 3 and v[1] == ":" and v[2] in "\\/")
+            prefix, separator, _ = v.partition(":")
+            return (
+                bool(separator)
+                and bool(prefix)
+                and not any(c in prefix for c in "\\/")
+                and not (len(v) >= 3 and v[1] == ":" and v[2] in "\\/")
+            )
 
         endpoints = [v for v in (source, destination) if remote(v)]
         if len(endpoints) != 1:
