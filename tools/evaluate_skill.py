@@ -7,12 +7,12 @@ access are used; behavioral skill-selection scenarios are recorded separately.
 import json
 import os
 from pathlib import Path
-import re
 import subprocess
 import sys
 import tempfile
 import time
-from urllib.parse import unquote, urlsplit
+
+from skill_references import local_references
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -132,15 +132,7 @@ def measure_skill():
         "serving_create": "references/serving/create.md",
         "auth": "references/access.md",
     }
-    links, broken = 0, []
-    for path in markdown:
-        for target in re.findall(r"\]\(([^)]+)\)", path.read_text(encoding="utf-8")):
-            parsed = urlsplit(target)
-            if parsed.scheme or parsed.netloc or not parsed.path:
-                continue
-            links += 1
-            if not (path.parent / unquote(parsed.path)).exists():
-                broken.append({"file": str(path.relative_to(SKILL)), "target": target})
+    links, broken = local_references(SKILL, markdown)
     return {
         "markdown_files": len(markdown),
         "entry_bytes": len(entry.encode("utf-8")),

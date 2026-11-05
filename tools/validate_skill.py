@@ -1,22 +1,32 @@
 """Portable skill frontmatter, metadata and local-reference validation."""
 
-import re
 from pathlib import Path
 
 import yaml
 
-root = Path(__file__).resolve().parents[1] / "src/yicloud/skill"
-entry = (root / "SKILL.md").read_text(encoding="utf-8")
-frontmatter = yaml.safe_load(entry.split("---", 2)[1])
-assert frontmatter["name"] == "yicloud"
-assert frontmatter["description"]
-assert len(entry.splitlines()) < 100
-metadata = yaml.safe_load((root / "agents/openai.yaml").read_text(encoding="utf-8"))
-assert "$yicloud" in metadata["interface"]["default_prompt"]
-for path in root.rglob("*.md"):
-    content = path.read_text(encoding="utf-8")
-    assert "TODO" not in content and "[INSERT" not in content
-    for target in re.findall(r"\]\(([^)]+)\)", content):
-        if "://" not in target and not target.startswith("#"):
-            assert (path.parent / target.split("#")[0]).exists(), (path, target)
-print("Skill valid: frontmatter, metadata and local references")
+from skill_references import local_references
+
+
+def validate(root):
+    entry = (root / "SKILL.md").read_text(encoding="utf-8")
+    frontmatter = yaml.safe_load(entry.split("---", 2)[1])
+    if frontmatter["name"] != "yicloud" or not frontmatter["description"]:
+        raise ValueError("Invalid Skill name or description")
+    if len(entry.splitlines()) >= 100:
+        raise ValueError("Skill entry must have fewer than 100 lines")
+    metadata = yaml.safe_load((root / "agents/openai.yaml").read_text(encoding="utf-8"))
+    if "$yicloud" not in metadata["interface"]["default_prompt"]:
+        raise ValueError("Skill default prompt must invoke $yicloud")
+    markdown = sorted(root.rglob("*.md"))
+    for path in markdown:
+        content = path.read_text(encoding="utf-8")
+        if "TODO" in content or "[INSERT" in content:
+            raise ValueError(f"Unfinished Skill content: {path}")
+    _, broken = local_references(root, markdown)
+    if broken:
+        raise ValueError(f"Invalid local Skill references: {broken}")
+
+
+if __name__ == "__main__":
+    validate(Path(__file__).resolve().parents[1] / "src/yicloud/skill")
+    print("Skill valid: frontmatter, metadata and local references")
