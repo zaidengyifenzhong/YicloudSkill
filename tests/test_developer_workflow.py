@@ -331,6 +331,88 @@ def test_skill_status_unmanaged_path_is_not_modified(tmp_path):
     assert (tmp_path / "user-file").read_text() == "keep"
 
 
+@pytest.mark.parametrize("conflict", ["entry", "parent"])
+def test_skill_cli_reports_type_conflicts_without_overwriting_user_content(tmp_path, conflict):
+    import shutil
+    import sys
+
+    from yicloud.skill_install import MARKER
+
+    dest = tmp_path / "installed-skill"
+
+    def command(action):
+        return subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "yicloud",
+                "--json",
+                "skill",
+                action,
+                "--target",
+                "codex",
+                "--path",
+                str(dest),
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+            timeout=15,
+        )
+
+    created = command("install")
+    assert created.returncode == 0, created.stderr
+    marker = (dest / MARKER).read_bytes()
+    if conflict == "entry":
+        entry = dest / "SKILL.md"
+        entry.unlink()
+        entry.mkdir()
+        user_file = entry / "keep.txt"
+    else:
+        entry = dest / "references"
+        shutil.rmtree(entry)
+        user_file = entry
+    user_file.write_text("local user content")
+    failed = command("install")
+    assert failed.returncode == 1 and not failed.stdout
+    error = json.loads(failed.stderr)
+    assert error["ok"] is False and error["error"]["kind"] == "configuration"
+    assert str(entry) in error["error"]["message"]
+    assert (dest / MARKER).read_bytes() == marker
+    assert user_file.read_text() == "local user content"
+    diagnostic = command("status")
+    assert diagnostic.returncode == 0, diagnostic.stderr
+    assert json.loads(diagnostic.stdout)["data"]["targets"][0]["state"] == "conflict"
+    if conflict == "entry":
+        assert list(entry.iterdir()) == [user_file]
+
+
+def test_skill_upgrade_recovers_missing_files_preserves_extras_and_removes_obsolete(tmp_path):
+    from yicloud.skill_install import MARKER, digest
+
+    dest = tmp_path / "skill"
+    install("codex", dest)
+    guide = dest / "references/jobs/run.md"
+    expected = guide.read_bytes()
+    guide.unlink()
+    user_file = dest / "personal.txt"
+    user_file.write_text("keep")
+    obsolete = dest / "obsolete.md"
+    obsolete.write_text("previous version")
+    marker = dest / MARKER
+    ownership = json.loads(marker.read_text())
+    ownership["files"]["obsolete.md"] = digest(obsolete)
+    marker.write_text(json.dumps(ownership))
+    install("codex", dest)
+    assert guide.read_bytes() == expected
+    assert user_file.read_text() == "keep"
+    assert not obsolete.exists()
+    assert status("codex", dest)["targets"][0]["state"] == "matching"
+    install("codex", dest, True)
+    assert list(dest.iterdir()) == [user_file]
+
+
 def test_api_doctor_checks_zone_and_does_not_return_inventory(account):
     def handler(req):
         assert req.method == "GET"

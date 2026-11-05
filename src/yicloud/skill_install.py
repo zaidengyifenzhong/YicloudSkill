@@ -36,7 +36,16 @@ def manifest(path):
             raise ValueError()
         for name in value["files"]:
             p = PurePosixPath(name)
-            if p.is_absolute() or ".." in p.parts or "\\" in name:
+            if (
+                not p.parts
+                or p.is_absolute()
+                or p.as_posix() != name
+                or ".." in p.parts
+                or "\\" in name
+                or ":" in name
+                or "\x00" in name
+                or p.parts[0] == MARKER
+            ):
                 raise ValueError()
         return value["files"]
     except (ValueError, KeyError, TypeError) as e:
@@ -56,13 +65,27 @@ def packaged_files(source):
     }
 
 
-def checked_path(root, name):
+def checked_root(root):
+    """Check the nearest existing parent before any target is changed."""
+    for path in (root, *root.parents):
+        if path.exists() or path.is_symlink():
+            if not path.is_dir():
+                raise ConfigurationError(f"Skill directory conflicts with non-directory: {path}")
+            break
+
+
+def checked_path(root, name, *, require_file=False):
     dest = root / name
     for p in (dest, *dest.parents):
         if p == root:
             break
         if p.is_symlink():
             raise ConfigurationError(f"Skill path conflicts with symlink: {p}")
+        if p == dest:
+            if require_file and p.exists() and not p.is_file():
+                raise ConfigurationError(f"Skill file conflicts with non-file: {p}")
+        elif p.exists() and not p.is_dir():
+            raise ConfigurationError(f"Skill parent conflicts with non-directory: {p}")
     return dest
 
 
@@ -73,9 +96,10 @@ def install(target, path=None, uninstall=False):
     packaged = packaged_files(source)
     for dest in destinations:
         old = manifest(dest) if dest.exists() or dest.is_symlink() else {}
+        checked_root(dest)
         previous[dest] = old
         for name in old.keys() | packaged.keys():
-            checked_path(dest, name)
+            checked_path(dest, name, require_file=not uninstall)
         if not uninstall:
             # Preflight every target before changing any installation.
             for name, expected in old.items():
@@ -156,11 +180,12 @@ def status(target, path=None):
             "local_edits": [],
             "obsolete": [],
         }
-        if dest.exists() or dest.is_symlink():
-            try:
+        try:
+            checked_root(dest)
+            if dest.exists() or dest.is_symlink():
                 old = manifest(dest)
                 for name in old.keys() | packaged.keys():
-                    item = checked_path(dest, name)
+                    item = checked_path(dest, name, require_file=True)
                     if not item.is_file():
                         if name in packaged:
                             row["missing"].append(name)
@@ -177,8 +202,8 @@ def status(target, path=None):
                     if not any(row[k] for k in ("missing", "different", "local_edits", "obsolete"))
                     else "different"
                 )
-            except (ConfigurationError, OSError) as e:
-                row.update(state="conflict", reason=str(e))
+        except (ConfigurationError, OSError) as e:
+            row.update(state="conflict", reason=str(e))
         for k in ("missing", "different", "local_edits", "obsolete"):
             row[k].sort()
         rows.append(row)

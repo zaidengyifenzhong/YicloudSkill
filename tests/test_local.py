@@ -380,6 +380,148 @@ def test_all_skill_targets_are_preflighted_before_any_upgrade(tmp_path, monkeypa
     assert (claude / "SKILL.md").read_text() == "user edits"
 
 
+@pytest.mark.parametrize(
+    "name",
+    [
+        "",
+        ".",
+        "./SKILL.md",
+        "a//b",
+        "a/./b",
+        "a/",
+        "../SKILL.md",
+        "/outside",
+        "C:/outside",
+        "C:relative",
+        "file:stream",
+        "\\\\server\\share",
+        ".yicloud-managed",
+        ".yicloud-managed/child",
+        "nul\x00name",
+    ],
+)
+def test_skill_manifest_rejects_noncanonical_and_cross_platform_paths(tmp_path, name):
+    from yicloud.skill_install import MARKER, OWNER, manifest, status
+
+    dest = tmp_path / "skill"
+    dest.mkdir()
+    marker = dest / MARKER
+    marker.write_text(json.dumps({"owner": OWNER, "files": {name: "0" * 64}}))
+    before = marker.read_bytes()
+    with pytest.raises(ConfigurationError, match="Invalid .* manifest"):
+        manifest(dest)
+    for uninstall in (False, True):
+        with pytest.raises(ConfigurationError, match="Invalid .* manifest"):
+            install("codex", dest, uninstall)
+    assert status("codex", dest)["targets"][0]["state"] == "conflict"
+    assert marker.read_bytes() == before
+    assert list(dest.iterdir()) == [marker]
+
+
+def test_skill_upgrade_rejects_file_replaced_by_directory_and_uninstall_preserves_it(tmp_path):
+    from yicloud.skill_install import MARKER, status
+
+    dest = tmp_path / "skill"
+    install("codex", dest)
+    marker = (dest / MARKER).read_bytes()
+    entry = dest / "SKILL.md"
+    entry.unlink()
+    entry.mkdir()
+    user_file = entry / "user.txt"
+    user_file.write_text("user content")
+    with pytest.raises(ConfigurationError, match="non-file.*SKILL.md"):
+        install("codex", dest)
+    assert (dest / MARKER).read_bytes() == marker
+    assert list(entry.iterdir()) == [user_file]
+    assert status("codex", dest)["targets"][0]["state"] == "conflict"
+    install("codex", dest, True)
+    assert user_file.read_text() == "user content"
+    assert not (dest / MARKER).exists()
+
+
+@pytest.mark.parametrize("conflict", ["entry", "parent"])
+def test_all_skill_targets_preflight_file_and_parent_types(tmp_path, monkeypatch, conflict):
+    import yicloud.skill_install as installer
+
+    package = tmp_path / "package"
+    source = package / "skill"
+    source.mkdir(parents=True)
+    (source / "SKILL.md").write_text("version A")
+    (source / "references").mkdir()
+    (source / "references/guide.md").write_text("guide")
+    codex, claude = tmp_path / "codex", tmp_path / "claude"
+    monkeypatch.setattr(installer, "files", lambda _: package)
+    monkeypatch.setattr(installer, "targets", lambda *args: [codex, claude])
+    install("all")
+    original = (codex / installer.MARKER).read_bytes()
+    (source / "SKILL.md").write_text("version B")
+    if conflict == "entry":
+        (claude / "SKILL.md").unlink()
+        (claude / "SKILL.md").mkdir()
+        user_file = claude / "SKILL.md/keep.txt"
+        actions = (False,)
+    else:
+        (claude / "references/guide.md").unlink()
+        (claude / "references").rmdir()
+        user_file = claude / "references"
+        actions = (False, True)
+    user_file.write_text("user content")
+    for uninstall in actions:
+        with pytest.raises(ConfigurationError, match="conflicts with non-"):
+            install("all", uninstall=uninstall)
+        assert (codex / "SKILL.md").read_text() == "version A"
+        assert (codex / installer.MARKER).read_bytes() == original
+        assert user_file.read_text() == "user content"
+        assert (claude / installer.MARKER).exists()
+
+
+def test_all_skill_targets_preflight_new_destination_parent(tmp_path, monkeypatch):
+    import yicloud.skill_install as installer
+
+    codex = tmp_path / "codex"
+    blocked = tmp_path / "blocked"
+    blocked.write_text("user file")
+    monkeypatch.setattr(installer, "targets", lambda *args: [codex, blocked / "skill"])
+    with pytest.raises(ConfigurationError, match="directory conflicts with non-directory"):
+        install("all")
+    assert not codex.exists()
+    assert blocked.read_text() == "user file"
+    assert [row["state"] for row in installer.status("all")["targets"]] == ["missing", "conflict"]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="FIFO is POSIX-only")
+def test_skill_upgrade_rejects_fifo_without_reading_it(tmp_path):
+    dest = tmp_path / "skill"
+    install("codex", dest)
+    entry = dest / "SKILL.md"
+    entry.unlink()
+    os.mkfifo(entry)
+    with pytest.raises(ConfigurationError, match="non-file.*SKILL.md"):
+        install("codex", dest)
+
+
+def test_skill_managed_symlink_still_blocks_install_and_uninstall(tmp_path):
+    from yicloud.skill_install import MARKER, status
+
+    dest = tmp_path / "skill"
+    install("codex", dest)
+    marker = (dest / MARKER).read_bytes()
+    external = tmp_path / "user.txt"
+    external.write_text("outside content")
+    entry = dest / "SKILL.md"
+    entry.unlink()
+    try:
+        entry.symlink_to(external)
+    except OSError:
+        pytest.skip("Creating symlinks is not supported by this environment")
+    for uninstall in (False, True):
+        with pytest.raises(ConfigurationError, match="symlink"):
+            install("codex", dest, uninstall)
+    assert status("codex", dest)["targets"][0]["state"] == "conflict"
+    assert external.read_text() == "outside content"
+    assert (dest / MARKER).read_bytes() == marker
+
+
 @pytest.mark.parametrize("json_output", [False, True])
 def test_interrupted_write_does_not_claim_remote_resource_is_unchanged(monkeypatch, json_output):
     import httpx
