@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
 
+import httpx
+
 from .errors import ConfigurationError, InputError
 
 
@@ -71,14 +73,27 @@ class Account:
             )
         ) or not isinstance(self.service_account, bool):
             raise ConfigurationError("Account fields have invalid types")
-        u = urlsplit(self.host)
+        try:
+            # urlsplit removes some control characters; reject the original input
+            # before that normalization can hide an invalid HTTP origin.
+            if any(ord(char) < 32 or ord(char) == 127 for char in self.host):
+                raise ValueError("Control characters in API host")
+            u = urlsplit(self.host)
+            # urllib validates explicit port syntax and range only on access.
+            _ = u.port
+            # Match the transport's URL/IDNA parser without opening a connection.
+            transport_url = httpx.URL(self.host)
+        except (ValueError, httpx.InvalidURL) as e:
+            raise ConfigurationError("API host has an invalid HTTPS origin or port") from e
         if (
             u.scheme != "https"
             or not u.hostname
-            or u.username
-            or u.password
-            or u.query
-            or u.fragment
+            or transport_url.scheme != "https"
+            or not transport_url.host
+            or u.username is not None
+            or u.password is not None
+            or "?" in self.host
+            or "#" in self.host
             or u.path not in ("", "/")
         ):
             raise ConfigurationError("API host must be an HTTPS origin without credentials or path")

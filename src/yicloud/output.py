@@ -17,23 +17,31 @@ def sensitive_key(key):
 
 
 def redact(value, secrets=(), show=False):
-    if isinstance(value, dict):
-        if "name" in value and sensitive_key(value["name"]) and "value" in value and not show:
-            value = dict(value, value="[REDACTED]")
-        return {
-            k: ("[REDACTED]" if sensitive_key(k) and not show else redact(v, secrets, show))
-            for k, v in value.items()
-        }
-    if isinstance(value, (list, tuple)):
-        return [redact(v, secrets, show) for v in value]
-    if isinstance(value, str):
-        for secret in secrets:
-            if secret:
-                value = value.replace(secret, "[REDACTED]")
-        if not show:
-            value = re.sub(r"(?i)(Bearer|Basic)\s+[A-Za-z0-9+/=._-]+", r"\1 [REDACTED]", value)
-        return value
-    return value
+    hidden = {secret for secret in secrets if secret}
+    if not show:
+        hidden.update(secret_values(value))
+    # Collect once across the whole response so sibling URLs and messages cannot
+    # repeat an identified secret. Longer values must be replaced before prefixes.
+    secrets = sorted((secret for secret in hidden if secret), key=len, reverse=True)
+
+    def walk(item):
+        if isinstance(item, dict):
+            if "name" in item and sensitive_key(item["name"]) and "value" in item and not show:
+                item = dict(item, value="[REDACTED]")
+            return {
+                k: ("[REDACTED]" if sensitive_key(k) and not show else walk(v))
+                for k, v in item.items()
+            }
+        if isinstance(item, (list, tuple)):
+            return [walk(v) for v in item]
+        if isinstance(item, str):
+            for secret in secrets:
+                item = item.replace(secret, "[REDACTED]")
+            if not show:
+                item = re.sub(r"(?i)(Bearer|Basic)\s+[A-Za-z0-9+/=._-]+", r"\1 [REDACTED]", item)
+        return item
+
+    return walk(value)
 
 
 def secret_values(value):
@@ -45,7 +53,7 @@ def secret_values(value):
             if sensitive_key(key) and isinstance(item, str) and item:
                 result.append(item)
             result.extend(secret_values(item))
-    elif isinstance(value, list):
+    elif isinstance(value, (list, tuple)):
         for item in value:
             result.extend(secret_values(item))
     return result
