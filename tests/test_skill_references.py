@@ -171,7 +171,6 @@ def test_tool_entrypoints_work_outside_repo_and_reject_mutation_under_optimizati
     project = tmp_path / "project"
     shutil.copytree(ROOT / "src", project / "src", ignore=shutil.ignore_patterns("__pycache__"))
     shutil.copytree(ROOT / "tools", project / "tools", ignore=shutil.ignore_patterns("__pycache__"))
-    shutil.copytree(ROOT / "tests/fixtures", project / "tests/fixtures")
     outside = tmp_path / "outside.md"
     outside.write_text("outside", encoding="utf-8")
     copied_skill = project / "src/yicloud/skill"
@@ -187,8 +186,18 @@ def test_tool_entrypoints_work_outside_repo_and_reject_mutation_under_optimizati
         check=False,
     )
     assert validation.returncode != 0 and "Invalid local Skill references" in validation.stderr
+    # CI runs the full evaluator separately; this mutation targets its real link/report path.
+    evaluate_links = """
+import runpy
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(sys.argv[1]).parent))
+main = runpy.run_path(sys.argv[1])["main"]
+main.__globals__["cli_cases"] = lambda env: []
+raise SystemExit(main())
+"""
     evaluation = subprocess.run(
-        [sys.executable, str(project / "tools/evaluate_skill.py")],
+        [sys.executable, "-I", "-c", evaluate_links, str(project / "tools/evaluate_skill.py")],
         cwd=tmp_path,
         capture_output=True,
         text=True,
@@ -198,6 +207,8 @@ def test_tool_entrypoints_work_outside_repo_and_reject_mutation_under_optimizati
     )
     report = json.loads(evaluation.stdout)
     assert evaluation.returncode == 1 and report["passed"] is False
+    assert report["network_guard_passed"] is True
+    assert report["cases"] == [] and report["context"]["local_links"] > 0
     assert report["context"]["broken_links"] == [
         {"file": "references/jobs/probe.md", "target": outside.as_posix()}
     ]
