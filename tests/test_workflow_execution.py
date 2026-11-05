@@ -367,6 +367,107 @@ def test_deleted_wait_invalid_rows_do_not_mean_absence(account, rows):
             wait_deleted(client, "job", "j", "p", "z", timeout=0)
 
 
+@pytest.mark.parametrize("kind", ["workspace", "job", "ray", "serving"])
+def test_deleted_wait_does_not_treat_invalid_total_as_absence(account, monkeypatch, kind):
+    calls = []
+
+    def handler(request):
+        calls.append(request.method)
+        return httpx.Response(
+            200,
+            json={"Code": 0, "Data": {"Items": [], "Total": None}},
+            headers={"X-OGW-Request-Id": "fixture-invalid-total"},
+        )
+
+    use_transport(monkeypatch, account, handler)
+    result = invoke(
+        kind,
+        "wait",
+        "fixture-id",
+        "--project",
+        "p",
+        "--zone",
+        "z",
+        "--target",
+        "deleted",
+        "--timeout",
+        "0",
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["ok"] is False and payload["error"]["kind"] == "platform"
+    assert payload["error"]["request_id"] == "fixture-invalid-total"
+    assert "Total" in payload["error"]["message"]
+    assert calls == ["GET"]
+
+
+@pytest.mark.parametrize(
+    "kind,row",
+    [
+        ("workspace", {"WorkspaceId": "w", "Name": "friendly", "Project": "p", "ZoneId": "z"}),
+        ("job", {"JobId": "j", "Name": "friendly", "Project": "p", "ZoneId": "z"}),
+        ("ray", {"RayJobName": "r", "DisplayName": "friendly", "Namespace": "p", "ZoneId": "z"}),
+        ("serving", {"ID": "i", "Name": "friendly", "Namespace": "p", "ZoneId": "z"}),
+    ],
+)
+@pytest.mark.parametrize("dry_run", [False, True], ids=["write", "dry-run"])
+def test_name_lookup_inconsistent_total_never_resolves_or_writes(
+    account, monkeypatch, kind, row, dry_run
+):
+    calls = []
+
+    def handler(request):
+        calls.append((request.method, request.url.path))
+        assert request.method == "GET"
+        assert "List" in request.url.path
+        container = "Data" if kind == "serving" else "Items"
+        return httpx.Response(
+            200,
+            json={"Code": 0, "Data": {container: [row], "Total": 0}},
+            headers={"X-OGW-Request-Id": "fixture-inconsistent-total"},
+        )
+
+    use_transport(monkeypatch, account, handler)
+    result = invoke(
+        kind,
+        "stop",
+        "friendly",
+        "--by-name",
+        "--project",
+        "p",
+        "--zone",
+        "z",
+        *(["--dry-run"] if dry_run else []),
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["ok"] is False and payload["error"]["kind"] == "platform"
+    assert payload["error"]["request_id"] == "fixture-inconsistent-total"
+    assert "exceeds Total" in payload["error"]["message"]
+    assert len(calls) == 1 and calls[0][0] == "GET"
+
+
+def test_all_pages_cli_refuses_invalid_total_instead_of_returning_partial_data(
+    account, monkeypatch
+):
+    calls = []
+
+    def handler(request):
+        calls.append(dict(request.url.params))
+        return httpx.Response(200, json={"Code": 0, "Data": {"Items": [], "Total": False}})
+
+    use_transport(monkeypatch, account, handler)
+    monkeypatch.setattr(
+        "yicloud.commands.discovery.client_for",
+        lambda _: YicloudClient(account, transport=httpx.MockTransport(handler)),
+    )
+    result = invoke("job", "list", "--project", "p", "--zone", "z", "--all")
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["ok"] is False and "invalid Total" in payload["error"]["message"]
+    assert len(calls) == 1 and calls[0]["Offset"] == "0"
+
+
 def test_deleted_wait_name_rejected_and_preview_uses_list(account, monkeypatch):
     use_transport(monkeypatch, account, lambda _: pytest.fail("No network"))
     args = ["job", "wait", "j", "--project", "p", "--zone", "z", "--target", "deleted"]

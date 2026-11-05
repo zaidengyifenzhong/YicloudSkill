@@ -111,15 +111,26 @@ def paginated(client, service, action, params, all_pages=False):
     current = result
     while True:
         page = items(current.data)
+        offset = params["Offset"] + len(page)
+        has_total = isinstance(current.data, dict) and "Total" in current.data
+        total = current.data["Total"] if has_total else None
+        if has_total and (type(total) is not int or total < 0):
+            raise YicloudError(
+                "Pagination response has invalid Total; completeness is not verified",
+                request_id=current.request_id,
+            )
+        if has_total and page and offset > total:
+            raise YicloudError(
+                "Pagination response exceeds Total; completeness is not verified",
+                request_id=current.request_id,
+            )
         if page:
             fingerprint = json.dumps(page, sort_keys=True)
             if fingerprint in previous:
                 raise YicloudError("Pagination did not advance; server repeated a page")
             previous.add(fingerprint)
         combined.extend(page)
-        offset = params["Offset"] + len(page)
-        total = current.data.get("Total") if isinstance(current.data, dict) else None
-        if type(total) is int and total >= 0:
+        if has_total:
             # A server may cap Limit. Its total, rather than the requested page size,
             # determines whether a short page is actually the last one.
             if offset >= total:

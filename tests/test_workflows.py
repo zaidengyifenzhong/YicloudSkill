@@ -361,6 +361,127 @@ def test_pagination_does_not_report_incomplete_or_repeated_results(account, page
             )
 
 
+@pytest.mark.parametrize("total", [None, True, -1, "1", 1.0, {}, []])
+@pytest.mark.parametrize("invalid_page", [0, 1], ids=["first-page", "later-page"])
+def test_complete_pagination_rejects_present_invalid_totals(account, total, invalid_page):
+    offsets = []
+    params = {"Project": "p", "ZoneId": "z", "Limit": 1}
+
+    def handler(request):
+        offset = int(request.url.params["Offset"])
+        offsets.append(offset)
+        data = (
+            {"Items": [], "Total": total}
+            if offset == invalid_page
+            else {"Items": [{"JobId": "j"}], "Total": 2}
+        )
+        return httpx.Response(
+            200,
+            json={"Code": 0, "Data": data},
+            headers={"X-OGW-Request-Id": f"fixture-page-{offset}"},
+        )
+
+    with YicloudClient(account, transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(YicloudError, match="invalid Total") as error:
+            paginated(client, "job", "ListJobs", params, True)
+    assert offsets == list(range(invalid_page + 1))
+    assert error.value.request_id == f"fixture-page-{invalid_page}"
+    assert params == {"Project": "p", "ZoneId": "z", "Limit": 1}
+
+
+@pytest.mark.parametrize("invalid_page", [0, 1], ids=["first-page", "later-page"])
+def test_complete_pagination_rejects_rows_exceeding_total(account, invalid_page):
+    offsets = []
+
+    def handler(request):
+        offset = int(request.url.params["Offset"])
+        offsets.append(offset)
+        return httpx.Response(
+            200,
+            json={
+                "Code": 0,
+                "Data": {
+                    "Items": [{"JobId": f"j-{offset}"}],
+                    "Total": offset if offset == invalid_page else 2,
+                },
+            },
+            headers={"X-OGW-Request-Id": f"fixture-page-{offset}"},
+        )
+
+    with YicloudClient(account, transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(YicloudError, match="exceeds Total") as error:
+            paginated(client, "job", "ListJobs", {"Project": "p", "ZoneId": "z", "Limit": 1}, True)
+    assert offsets == list(range(invalid_page + 1))
+    assert error.value.request_id == f"fixture-page-{invalid_page}"
+
+
+@pytest.mark.parametrize("native_list", [False, True], ids=["no-total", "native-list"])
+def test_complete_pagination_keeps_omitted_total_compatibility(account, native_list):
+    offsets = []
+    rows = [{"JobId": f"j-{n}"} for n in range(3)]
+
+    def handler(request):
+        offset = int(request.url.params["Offset"])
+        offsets.append(offset)
+        page = rows[offset : offset + 2]
+        return httpx.Response(
+            200, json={"Code": 0, "Data": page if native_list else {"Items": page}}
+        )
+
+    with YicloudClient(account, transport=httpx.MockTransport(handler)) as client:
+        result = paginated(
+            client, "job", "ListJobs", {"Project": "p", "ZoneId": "z", "Limit": 2}, True
+        )
+    assert result.data == {"Items": rows, "Total": 3}
+    assert offsets == [0, 2]
+
+
+def test_complete_pagination_allows_locally_consistent_total_changes(account):
+    offsets = []
+
+    def handler(request):
+        offset = int(request.url.params["Offset"])
+        offsets.append(offset)
+        return httpx.Response(
+            200,
+            json={
+                "Code": 0,
+                "Data": {"Items": [{"JobId": f"j-{offset}"}], "Total": 4 if offset == 0 else 3},
+            },
+        )
+
+    with YicloudClient(account, transport=httpx.MockTransport(handler)) as client:
+        result = paginated(
+            client, "job", "ListJobs", {"Project": "p", "ZoneId": "z", "Limit": 1}, True
+        )
+    assert offsets == [0, 1, 2]
+    assert result.data == {"Items": [{"JobId": f"j-{n}"} for n in range(3)], "Total": 3}
+
+
+def test_complete_pagination_allows_empty_offset_beyond_total(account):
+    with YicloudClient(
+        account,
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json={"Code": 0, "Data": {"Items": [], "Total": 2}})
+        ),
+    ) as client:
+        result = paginated(
+            client, "job", "ListJobs", {"Project": "p", "ZoneId": "z", "Offset": 5}, True
+        )
+    assert result.data == {"Items": [], "Total": 0}
+
+
+def test_single_page_preserves_raw_response_without_completeness_claim(account):
+    data = {"Items": [], "Total": None}
+    with YicloudClient(
+        account,
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json={"Code": 0, "Data": data})
+        ),
+    ) as client:
+        assert paginated(client, "job", "ListJobs", {"Project": "p", "ZoneId": "z"}).data == data
+
+
 def test_lifecycle_requests_reuse_platform_rules_without_cli():
     assert workload_params("job", "delete", "j", "p", "z") == {
         "Resources": [{"Project": "p", "JobId": "j"}]
