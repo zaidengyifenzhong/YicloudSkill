@@ -1,6 +1,16 @@
+from inspect import signature
+
 import pytest
+from click.testing import CliRunner
 
 from yicloud.config import Account
+
+
+@pytest.fixture
+def separated_cli_runner():
+    """Capture stdout/stderr independently across supported Click releases."""
+    options = {"mix_stderr": False} if "mix_stderr" in signature(CliRunner).parameters else {}
+    return CliRunner(**options)
 
 
 @pytest.fixture(autouse=True)

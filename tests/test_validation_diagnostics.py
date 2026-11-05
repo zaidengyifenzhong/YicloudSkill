@@ -8,7 +8,6 @@ import sys
 
 import httpx
 import pytest
-from click.testing import CliRunner
 
 from yicloud.catalog import operation, validate
 from yicloud.cli import main
@@ -161,7 +160,9 @@ def test_create_failure_hints_preserve_error_and_never_rewrite_or_retry(
 
 
 @pytest.mark.parametrize("json_output", [True, False])
-def test_failure_hints_are_visible_on_stderr(account, monkeypatch, json_output):
+def test_failure_hints_are_visible_on_stderr(
+    account, monkeypatch, json_output, separated_cli_runner
+):
     params = job_request(RestartPolicy="Never", BackoffLimit=0)
     monkeypatch.setattr(
         "yicloud.commands.workloads.client_for",
@@ -174,7 +175,7 @@ def test_failure_hints_are_visible_on_stderr(account, monkeypatch, json_output):
             ),
         ),
     )
-    result = CliRunner().invoke(
+    result = separated_cli_runner.invoke(
         main,
         (["--json"] if json_output else []) + ["job", "create", "--file", "-"],
         input=json.dumps(params),
@@ -313,13 +314,15 @@ def test_invalid_job_scheduling_is_rejected_locally(field, value, message):
     ],
 )
 @pytest.mark.parametrize("invocation", [["job", "create", "--file", "-"], ["workspace", "create"]])
-def test_scheduling_options_are_job_shortcut_only(monkeypatch, flags, invocation):
+def test_scheduling_options_are_job_shortcut_only(
+    monkeypatch, flags, invocation, separated_cli_runner
+):
     def forbidden(_):
         pytest.fail("Invalid invocation must not create a client")
 
     monkeypatch.setattr("yicloud.commands.workloads.client_for", forbidden)
-    result = CliRunner().invoke(main, ["--json", *invocation, *flags], input="{}")
-    assert result.exit_code == 1
+    result = separated_cli_runner.invoke(main, ["--json", *invocation, *flags], input="{}")
+    assert result.exit_code == 1 and result.stdout == ""
     error = json.loads(result.stderr)["error"]
     assert error["kind"] == "input"
     assert (

@@ -269,13 +269,13 @@ def test_context_only_supplies_missing_fields_and_does_not_mutate_files(named_co
         (["oss", "create-bucket", "--project", "p", "--bucket", "b", "--set", "Unknown=1"], None),
     ],
 )
-def test_invalid_input_fails_before_client(args, input, monkeypatch):
+def test_invalid_input_fails_before_client(args, input, monkeypatch, separated_cli_runner):
     def forbidden(ctx):
         pytest.fail("Invalid input constructed a client")
 
     monkeypatch.setattr("yicloud.commands.catalog_commands.client_for", forbidden)
-    result = invoke(*args, input=input)
-    assert result.exit_code == 1, result.output
+    result = separated_cli_runner.invoke(main, ["--json", *args], input=input)
+    assert result.exit_code == 1 and result.stdout == "", result.output
     assert json.loads(result.stderr)["error"]["kind"] == "input"
 
 
