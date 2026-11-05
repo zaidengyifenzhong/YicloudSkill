@@ -151,7 +151,11 @@ class Account:
                 secret_key=os.getenv(auth_keys[2], ""),
                 service_account=os.getenv(auth_keys[3], "false").lower() in ("true", "1"),
             )
-        values["host"] = host or os.getenv("YICLOUD_API_HOST") or values.get("host") or cls.host
+        values["host"] = (
+            host
+            if host is not None
+            else os.getenv("YICLOUD_API_HOST") or values.get("host") or cls.host
+        )
         values["region"] = (
             region or os.getenv("YICLOUD_REGION_ID") or values.get("region") or cls.region
         )
