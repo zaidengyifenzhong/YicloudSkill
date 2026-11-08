@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 
 from .catalog import operation, request_schema, validate
 from .errors import AuthenticationError, UnsupportedProtocol, YicloudError
-from .output import redact
+from .output import redact, secret_values
 
 
 def scalar(v):
@@ -50,15 +50,26 @@ def prepare_request(service, action, params=None, *, allow_unknown_fields=False)
     return op, query, body
 
 
-def _platform_code(payload, op, request_id):
+def _platform_code(payload, op, request_id, http_status):
     code = payload.get("Code", 0)
     if type(code) is not int:
         raise YicloudError(
             "Response has invalid platform Code",
             request_id=request_id,
             outcome_unknown=not op["read_only"],
+            http_status=http_status,
         )
     return code
+
+
+def _platform_error_hints(payload, secrets):
+    # Only the observed top-level detail field is part of this error contract.
+    detail = payload.get("_err")
+    if not isinstance(detail, str) or not detail.strip():
+        return []
+    detail = redact(detail, secrets).strip()
+    message = redact(str(payload.get("Msg", "")), secrets).strip()
+    return [detail] if detail and detail != message else []
 
 
 def decode_response(op, response, *, output=None, secrets=()):
@@ -72,6 +83,8 @@ def decode_response(op, response, *, output=None, secrets=()):
         except ValueError:
             failure = None
         if isinstance(failure, dict):
+            # Credentials can be repeated in error text outside their own field.
+            secrets = [*secrets, *secret_values(failure)]
             if type(failure.get("Code")) is int:
                 code = failure["Code"]
             if isinstance(failure.get("Msg"), str) and failure["Msg"]:
@@ -82,23 +95,31 @@ def decode_response(op, response, *, output=None, secrets=()):
             code=code,
             outcome_unknown=not op["read_only"] and response.status_code >= 500,
             http_status=response.status_code,
+            hints=_platform_error_hints(failure, secrets) if isinstance(failure, dict) else (),
         )
     if op["response_mode"] == "file":
         if "json" in response.headers.get("content-type", "").lower():
             try:
                 error_payload = response.json()
             except ValueError as e:
-                raise YicloudError("Invalid JSON download response", request_id=request_id) from e
+                raise YicloudError(
+                    "Invalid JSON download response",
+                    request_id=request_id,
+                    http_status=response.status_code,
+                ) from e
             code = (
-                _platform_code(error_payload, op, request_id)
+                _platform_code(error_payload, op, request_id, response.status_code)
                 if isinstance(error_payload, dict)
                 else 0
             )
             if code != 0:
+                secrets = [*secrets, *secret_values(error_payload)]
                 raise YicloudError(
                     redact(str(error_payload.get("Msg", "Download failed")), secrets),
                     code=code,
                     request_id=request_id,
+                    http_status=response.status_code,
+                    hints=_platform_error_hints(error_payload, secrets),
                 )
         path = Path(output)
         fd, tmp = tempfile.mkstemp(prefix=".yicloud-download-", dir=path.parent)
@@ -119,29 +140,40 @@ def decode_response(op, response, *, output=None, secrets=()):
             "Unexpected empty JSON response",
             request_id=request_id,
             outcome_unknown=not op["read_only"],
+            http_status=response.status_code,
         )
     try:
         payload = response.json()
     except ValueError as e:
         raise YicloudError(
-            "Invalid JSON response", request_id=request_id, outcome_unknown=not op["read_only"]
+            "Invalid JSON response",
+            request_id=request_id,
+            outcome_unknown=not op["read_only"],
+            http_status=response.status_code,
         ) from e
     if not isinstance(payload, dict):
         raise YicloudError(
-            "Expected response object", request_id=request_id, outcome_unknown=not op["read_only"]
+            "Expected response object",
+            request_id=request_id,
+            outcome_unknown=not op["read_only"],
+            http_status=response.status_code,
         )
     if op["response_mode"] == "envelope" and "Code" not in payload:
         raise YicloudError(
             "Response is missing platform Code",
             request_id=request_id,
             outcome_unknown=not op["read_only"],
+            http_status=response.status_code,
         )
-    code = _platform_code(payload, op, request_id)
+    code = _platform_code(payload, op, request_id, response.status_code)
     if code != 0:
+        secrets = [*secrets, *secret_values(payload)]
         raise YicloudError(
             redact(str(payload.get("Msg", "Platform error")), secrets),
             code=code,
             request_id=request_id,
+            http_status=response.status_code,
+            hints=_platform_error_hints(payload, secrets),
         )
     data = payload.get("Data", payload) if op["response_mode"] == "direct" else payload.get("Data")
     return data

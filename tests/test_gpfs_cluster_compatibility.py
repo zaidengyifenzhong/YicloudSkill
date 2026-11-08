@@ -101,7 +101,7 @@ def test_actual_cli_routes_send_exact_discovered_cluster(account, monkeypatch, m
 
 
 def test_override_scope_and_other_constraints_stay_explicit():
-    overrides = json.loads((ROOT / "tools/catalog_overrides.json").read_text())
+    overrides = json.loads((ROOT / "tools/catalog_overrides.json").read_text(encoding="utf-8"))
     corrections = {k: v for k, v in overrides.items() if k.startswith("fs/")}
     assert corrections.keys() == {"fs/" + action for action in ACTIONS}
     for action, correction in corrections.items():
@@ -164,8 +164,9 @@ def test_generator_applies_removal_and_rejects_missing_paths(tmp_path, case):
         pytest.skip("Go toolchain needed for catalog generator integration")
     sdk = tmp_path / "sdk/services/fs"
     sdk.mkdir(parents=True)
-    # Small AST input, with isolated VCS metadata supplied by the test fixture.
-    (sdk / "actions.go").write_text("""package fs
+    # Small AST input in a real, isolated Git repository; no shell shim is needed.
+    (sdk / "actions.go").write_text(
+        """package fs
 var client = T{productCode: "fs", lastVersion: "v1alpha2"}
 const FsClusterGpfs1 = "gpfs1"
 const FsGPFS = "GPFS"
@@ -177,16 +178,56 @@ func GetFileset(ctx C, req *GetFilesetReq) {
  path := fmt.Sprintf("/%s/%s/%s", client.productCode, client.lastVersion, utils.GetCurrentFuncsName())
  client.Get(ctx, path, req, nil)
 }
-""")
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    git = bin_dir / "git"
-    git.write_text(
-        '#!/bin/sh\ncase "$3" in\nrev-parse) echo 8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5;;\nstatus) exit 0;;\n*) exit 1;;\nesac\n'
+""",
+        encoding="utf-8",
     )
-    git.chmod(0o755)
+    sdk_root = sdk.parent.parent
+    git_env = {**os.environ, "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull}
+
+    def git(*args):
+        return subprocess.run(
+            ["git", "-C", str(sdk_root), *args],
+            env=git_env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        ).stdout.strip()
+
+    empty_template = tmp_path / "empty-git-template"
+    empty_template.mkdir()
+    git("init", "--template=" + str(empty_template))
+    git("add", "services")
+    git(
+        "-c",
+        "user.name=Generator Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "-m",
+        "Add synthetic SDK fixture",
+    )
+    fixture_commit = git("rev-parse", "HEAD")
+    assert len(fixture_commit) == 40 and git("status", "--porcelain") == ""
     tools = tmp_path / "tools"
     tools.mkdir()
+    # This copy tests override behavior, not generation against the real SDK.
+    # Substitute only the expected pin; preserve every other source byte and
+    # keep the production generator's upstream SDK requirement unchanged.
+    source_bytes = (ROOT / "tools/catalog.go").read_bytes()
+    source = source_bytes.decode("utf-8")
+    upstream_commit = catalog()["sdk_commit"]
+    assert fixture_commit != upstream_commit and source.count(upstream_commit) == 2
+    fixture_source = source.replace(upstream_commit, fixture_commit).encode("utf-8")
+    assert fixture_source.count(fixture_commit.encode("ascii")) == 2
+    assert (
+        fixture_source.replace(fixture_commit.encode("ascii"), upstream_commit.encode("ascii"))
+        == source_bytes
+    )
+    generator = tools / "catalog.go"
+    generator.write_bytes(fixture_source)
     action = "fs/MissingAction" if case == "missing_action" else "fs/GetFileset"
     field = "MissingField" if case == "missing_field" else "FsCluster"
     removal = "missing_constraint" if case == "missing_constraint" else "enum"
@@ -198,19 +239,23 @@ func GetFileset(ctx C, req *GetFilesetReq) {
                     "fields": {field: {removal: None}, "Fs": {"description": "preserved"}},
                 }
             }
-        )
+        ),
+        encoding="utf-8",
     )
     result = subprocess.run(
-        [go, "run", str(ROOT / "tools/catalog.go"), str(sdk.parent.parent)],
+        [go, "run", str(generator), str(sdk_root)],
         cwd=tmp_path,
-        env={**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"]},
+        env=git_env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=False,
     )
     if case == "valid":
         assert result.returncode == 0, result.stderr
-        fields = json.loads(result.stdout)["definitions"]["fs"]["GetFilesetReq"]["properties"]
+        generated = json.loads(result.stdout)
+        assert generated["sdk_commit"] == fixture_commit
+        fields = generated["definitions"]["fs"]["GetFilesetReq"]["properties"]
         assert fields["FsCluster"]["type"] == "string" and fields["FsCluster"]["nullable"]
         assert "enum" not in fields["FsCluster"]
         assert fields["Fs"]["enum"] == ["GPFS"]
