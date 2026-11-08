@@ -1,34 +1,62 @@
-# 为新任务选择资源
+# 查询计算资源与选择规格
 
-## 何时读取
+## 先确定范围与目标
 
-用户需要创建资源，且项目、可用区、规格或配额组尚未确定时读取。连接现有机器或查询已有任务无需重新选择。
+查询 CPU/GPU 规格、配额组、资源池、配额或节点容量时读取；创建前也可用它补齐资源选择。已有资源的清单和状态使用[查询手册](query.md)。这里只查询，不创建、启停、调整配额或加入配额组。
 
-## 选择流程
+沿用用户指定的账号、项目、可用区。缺失时按需查 `account current`、`context show`、`project list --all`、`resources zones`；候选唯一且符合意图可使用，多个候选只补问缺失范围，不自行选第一项。地域来自账号或根级 `--region`，没有地域列表命令。`--all` 只翻当前范围的分页，不遍历项目、可用区或 SKU Scope。
 
-1. 沿用用户已选账号和范围；缺失时查 `account current`、`project list`、`resources zones`。地域由账号或根级 `--region` 选择，没有地域列表命令。
-2. 区分用户选择的是 SKU 还是配额模式，不混用两套配置。
-3. 按真实项目、可用区查询候选；支持分页的命令用 `--all` 取得完整结果。
+## 按意图直接查询
+
+以下 `project`、`zone` 必须来自本次确认的范围。只执行当前需要的查询；例子查询项目级 GPU 开发机规格和配额组，按下表替换用途与机型。
 
 ```bash
-yicloud resources skus --project "$project" --zone "$zone" --set 'Scope="project"' --set 'SKUType="gpu"' --set 'ResourceType="workspace"' --all
-yicloud resources quota-groups --project "$project" --zone "$zone" --all
-yicloud project quota --project "$project"
+yicloud --json resources skus --project "$project" --zone "$zone" --set 'Scope="project"' --set 'SKUType="gpu"' --set 'ResourceType="workspace"' --all
+yicloud --json resources quota-groups --project "$project" --zone "$zone" --set 'UsageType="workspace"' --set 'MachineType="GPU"' --all
+yicloud --json project quota --project "$project"
 ```
 
-SKU 示例是 GPU 项目级开发机规格：CPU 将 SKUType 改为 `cpu`，Job/Ray 将 ResourceType 改为 `job`/`ray`，Scope 按用户所需 public、tenant 或 project 选择。SKUType 必填；省略 Scope 时为 public，仅传项目不会自动选择项目 SKU。配额组查询开发机时加 `--set 'UsageType="workspace"'`，Job/Ray 使用 `workload`；CPU/GPU 机型筛选使用 `--set 'MachineType="CPU"'` 或 `"GPU"`。
+| 意图 | 首命令与必要信息 |
+|---|---|
+| CPU/GPU SKU 规格 | `resources skus`；必填 `SKUType="cpu"/"gpu"`，指定实际 Scope、用途、zone；`Scope="project"` 还需 Project |
+| 可见配额组及关联池 | `resources quota-groups`；必填 Project，按 zone、UsageType、MachineType 过滤；从返回的 QuotaGroup、PoolId/PoolName 取得真实标识 |
+| 项目配额和占用 | `project quota --project "$project"`；项目级，无 zone 参数；配额限制另查 `project quota-limit` |
+| 指定组/池的节点资源 | `resources nodes`；显式 project、zone，组用 `QuotaGroup`，池用 `ResourcePoolId`，不要用 PoolId 替代此字段 |
+| 单独查询资源池元数据 | 先看 `api describe mc ListResourcePools` 和 `mc list-resource-pools --help`；其范围字段为复数数组 Projects/Zones，不是 Project/ZoneId |
 
-4. 配额组核对 UsageType 与 MachineType：开发机与 workload、CPU 与 GPU 不能仅凭名称区分。从返回结果取得真实 PoolName/PoolId，再按 `resources available --help` 查询容量。权限失败记为“容量未知”。
-5. 若候选唯一且符合既有要求可继续；多个候选涉及价格、资源或运行策略取舍时让用户选择，不自行挑第一个。
+查询已选定的 GPU 开发机配额组节点时，`quota_group_filter` 是 `QuotaGroup=` 加真实组名的 JSON 字符串，例如 `QuotaGroup="group-a"`；组名必须来自本次查询，不照抄示例值：
 
-## 判断规则
+```bash
+yicloud --json resources nodes --project "$project" --zone "$zone" --set "$quota_group_filter" --set 'UsageType="workspace"' --set 'MachineType="GPU"' --all
+```
 
-- SKU 模式不同时传 CPU/Memory/GPU/QuotaGroup；配额模式明确所需资源量。
-- 配额是使用上限，不是当前空闲量或最小创建规格。调度预测也不预留资源。
-- 空结果先检查项目、可用区、可见范围和分页，不直接认定平台没有资源。
-- 不把一次测试成功的 QoS、优先级或私有资源模式设为所有任务默认值。
-- 创建前根据目标资源核对镜像架构、必要网络和存储权限；需要准备离线依赖时读[环境准备](environment.md)。
+按池查询时，将组筛选替换为 `ResourcePoolId=` 加真实池 ID 的 JSON 字符串；按目标用途/机型替换其他筛选。不因当前没有节点查询权限而扩大范围。
 
-## 完成标准
+字段和值区分大小写，不能在不同接口间照搬：
 
-取得符合用户要求的项目、可用区、资源模式与真实规格标识，并区分“已知配额”“实时容量”“尚未验证的条件”。将选择传给对应任务手册，不能在资源选择阶段擅自创建。
+| 目标 | SKU 的 ResourceType | 配额组/节点的 UsageType |
+|---|---|---|
+| 开发机 | `workspace` | `workspace` |
+| Job | `job` | `workload` |
+| Ray | `ray` | `workload` |
+| Serving | 当前依据没有确认其 SKU 用途筛选值 | 当前依据没有确认各部署模式的配额用途映射；按[部署手册](serving/create.md)核对 |
+
+SKUType 用小写 `cpu/gpu`，MachineType 用大写 `CPU/GPU`。SKU Scope 可为 `public/tenant/project`，省略为 public；只传 Project 不会选中项目 SKU。ResourceType 省略表示所有用途，不能把混合结果直接当作目标用途候选。不要猜 `ResourceType="serving"`，也不要把 `UsageType="job"/"ray"` 发给配额组接口。
+
+只查询“我所在的组”时，配额组可加 `--set 'IsBelongsTo=true'`；可见组不等于当前用户已有使用资格。QuotaGroup 名称过滤是子串匹配，选择时核对完整标识、UsageType、MachineType、ZoneIds 和关联池，不按名称猜用途。多个合适候选涉及资源、价格或策略取舍时交由用户选择。
+
+## 配额、占用与可调度容量分开报告
+
+- `project quota` 返回的 QuotaStatus、SkuQuotaStatus 按各自字段报告。TotalQuota、AllocatedQuota、UsedQuota 或 SKU 的 Total/Requested/Used/Available 属于配额及占用口径，不是物理空闲容量；不混用单位或自行相减后称为“空闲 GPU”。`quota-limit` 的 MinQuota/MaxQuota 也不是最小/最大单机规格。
+- 配额组中的 MachineCount、PodCount、QuotaStatus 是组级信息，不能据此保证某个请求可调度。需要节点信息时，在明确组/池范围内查 `resources nodes --all`，保留节点状态、维护/调度条件和资源字段的实际含义；节点数量不等于空闲机器数量，不展开用户实例或任务内容。
+- `resources available` 映射 `mc ListQuotaGroupResourcePoolSharedNodes`：查询指定池中尚未关联目标配额组的节点，**不是通用空闲容量接口**。仅此目标才使用；先核对 `api describe mc ListQuotaGroupResourcePoolSharedNodes`，提供真实 QuotaGroup（本地必填）及 PoolId 或 PoolName（描述要求至少一个，二者同时传时优先 PoolId），并限定 project、zone。不把返回节点视为当前组已可使用的资源，也不为测试关联节点。
+- `resources predict` 是开发机创建前资源预判。先读 `api describe workspace GetPredict`，必填 Project、ZoneId，其他调度字段来自已核实的目标配置；不猜无说明的 Pool、ResourceType 或单位。预测不预留资源，也不自动适用于 Job/Ray/Serving。
+- 空结果先核对项目、zone、Scope、用途和分页，只能报告该范围未返回候选。权限失败、未知字段含义或未完成分页属于未查明，不能记为零容量；不切换账号、扩大权限或试发错误字段探测。
+
+## 交付与创建衔接
+
+报告查询账号与地域、项目/zone、用途和筛选范围，分别列出规格/配额组、已知配额及占用、实际验证的节点/调度条件和未查明项。候选只有本地 schema 依据时，明确其在线支持和权限尚未验证。
+
+创建时将真实规格标识或配额组交给对应任务手册：SKU 模式不混传 CPU/Memory/GPU/QuotaGroup；配额模式明确资源量。另核对镜像架构、网络和存储权限；需要离线依赖时读[环境准备](environment.md)。不把一次成功的 QoS、优先级或私有资源模式设为通用默认。
+
+平台政策优先核对用户指定的最新飞书文档；本地 help/schema 仅描述固定 SDK 请求合同，不证明当前服务端支持、权限或实时调度能力。

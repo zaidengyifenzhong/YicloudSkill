@@ -4,27 +4,26 @@
 
 等待训练、查看历史日志、验证产物、停止或删除已有任务时读取。仅需清单或状态时读[查询已有资源](../query.md)。
 
-## 定位与状态
+## 查状态、等完成
 
-按[查询手册](../query.md)取得真实 JobId 和项目、可用区；已有 ID 可省去名称解析。
+按[查询手册](../query.md)取得真实 `job_id`、`project`、`zone`；已有 ID 直接查询。以下显式传范围，也可由已确认的 context 提供。按名称定位时使用 `--by-name`，不猜 ID。
 
 ```bash
-yicloud job status "$job_id"
-yicloud job replicas "$job_id"
+yicloud job status "$job_id" --project "$project" --zone "$zone"
+yicloud job wait "$job_id" --project "$project" --zone "$zone" --timeout 1800
 ```
 
-仅在诊断需要时查 replicas 或 `job precheck --help`；precheck 查询的是已存在任务的训前检查，不是提交前的资源预检，所需 JobUid 从实际状态取得。
+`wait` 默认每 5 秒轮询，最多等待 30 分钟；默认目标是成功完成，Running 不算完成。`--no-timeout` 取消本地截止时间，与 `--timeout` 互斥。失败终态或未知状态报错，保留实际状态。超时或 Ctrl-C 只结束本地观察，不停止远端任务；恢复时重新查状态，不重复创建。
 
 ## 等待和日志
 
-运行完成使用 `job wait "$job_id" --timeout 1800`；默认每 5 秒轮询，最多等待 30 分钟。`--no-timeout` 明确取消本地截止时间，与 `--timeout` 互斥。未知状态或失败终态按错误返回处理，不猜成功。
-
 ```bash
-yicloud job logs "$job_id" --since 15m
-yicloud job logs "$job_id" --start "$start_time" --end "$end_time"
+yicloud job logs "$job_id" --project "$project" --zone "$zone" --since 15m
+yicloud job logs "$job_id" --project "$project" --zone "$zone" --start "$start_time" --end "$end_time"
+yicloud job logs "$job_id" --project "$project" --zone "$zone" --since 15m --follow
 ```
 
-以上是相对时间和明确时间两种选择。时间值使用带时区 RFC3339 或 Unix 纳秒整数；由 CLI 转换，不自行浮点计算纳秒。默认最近 10 分钟、最多 200 条；繁忙窗口应增加 limit 或缩小时间范围。实例筛选使用 `--instance`。
+按目标选择相对时间、明确时间或持续观察。`--since` 与 `--start` 互斥；`start_time`、`end_time` 使用带时区 RFC3339 或 Unix 纳秒整数，由 CLI 转换。默认最近 10 分钟、最多 200 条；`--limit` 可取 1–10000，达到上限不能视作完整日志。繁忙窗口增加上限、缩小范围或用 `--instance "$replica_name"` 筛选。
 
 需要持续观察时使用 `--follow`，它是轮询，不能与 `--json`、`--dry-run` 或 `--end` 同用，不承诺日志严格恰好一次。空日志可能是索引延迟，扩大到覆盖启动时间的单次查询交叉核对。
 
@@ -32,7 +31,15 @@ yicloud job logs "$job_id" --start "$start_time" --end "$end_time"
 
 ## 失败取证
 
-在删除或重建前，尽力保存本次任务的 status、覆盖实际运行窗口的日志、replicas，以及排查产物所需的挂载、路径和权限证据。需要副本详情时，从 replicas 返回的真实 Name 调用 `job get-job-replica --help` 指定的查询；不要把任务 ID 当作副本名称。记录原始命令、错误信息、退出码及 request_id，隐藏凭据，不采集无关任务内容。
+只在诊断需要时查询副本或训前检查。`replica_name` 来自本次 replicas 返回的真实 `Name`；`job_uid` 来自 ListJobs / GetJob 的 `Uid`，不把 JobId 当作这两个值。
+
+```bash
+yicloud job replicas "$job_id" --project "$project" --zone "$zone"
+yicloud job get-job-replica --job-id "$job_id" --project "$project" --replica-name "$replica_name"
+yicloud job precheck "$job_id" --project "$project" --zone "$zone" --set "JobUid=\"$job_uid\""
+```
+
+`precheck` 查询已存在任务的训前检查，不是提交前的资源预检。删除或重建前，尽力保存本任务的 status、运行窗口日志、所需副本详情，以及挂载、路径和权限证据。记录命令、错误、退出码及 request_id，隐藏凭据，不采集无关任务内容。
 
 日志暂时为空时，在明确的有限时间内重查，不无限等待。区分用户主程序退出与镜像附带服务的警告：只有具体错误和退出信息能支持归因，例如 `python: not found` 与用户命令退出 127。运行环境中 `python3` 可用不证明 `python` 也可用，也不能只凭某个附带服务退出就认定主程序失败。
 
@@ -46,10 +53,14 @@ yicloud job logs "$job_id" --start "$start_time" --end "$end_time"
 
 ## 停止与删除
 
-1. 确认唯一目标及用户的停止或删除意图。停止不等于删除，Job 没有 start。
-2. 对 `job stop "$job_id"` 或 `job delete "$job_id"` 先加 `--dry-run` 校验，通过后执行。
-3. 分别使用 `job wait "$job_id" --target stopped` 或 `--target deleted` 验证结果。若任务已自然结束，报告实际终态，不把“停止请求发出”当作已停止。
-4. 清理产物是独立操作，只删除已确定归属和授权范围的路径。
+确认唯一目标和已有授权后，只执行对应操作；先加 `--dry-run` 预览，通过后移除该选项执行。预览通过不证明权限或远端业务条件满足。
+
+| 意图 | 操作命令 | 执行后的验收 |
+|---|---|---|
+| 停止训练 | `yicloud job stop "$job_id" --project "$project" --zone "$zone" --dry-run` | `yicloud job wait "$job_id" --project "$project" --zone "$zone" --target stopped` |
+| 删除任务 | `yicloud job delete "$job_id" --project "$project" --zone "$zone" --dry-run` | `yicloud job wait "$job_id" --project "$project" --zone "$zone" --target deleted` |
+
+停止不等于删除。Job 没有 start/restart；重新运行需按[训练执行](run.md)创建新任务，不把重跑当作原任务恢复。停止时若已自然成功，`--target stopped` 报告目标不符，交付实际终态。删除等待必须保留 ID，不能用 `--by-name`；它验证范围内完整清单已无该 ID，不证明输出数据已删除。清理产物是独立操作，只处理已确认归属且获授权的路径。
 
 ## 异常与交付
 

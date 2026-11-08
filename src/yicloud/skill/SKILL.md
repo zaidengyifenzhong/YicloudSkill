@@ -7,7 +7,7 @@ description: 使用 yicloud CLI 查询和管理仪电智算云的开发机、训
 
 根据用户目标选择能力：Workspace 用于交互开发，Job 用于托管训练，Ray 用于分布式作业，Serving 用于持续推理。沿用用户指定的机器、框架、账号和资源；查询或连接已有资源不进入创建流程。
 
-## 八个核心操作
+## 核心操作
 
 只读取当前操作需要的手册；出现异常或进入另一项任务时再加载相关文件。
 
@@ -21,23 +21,23 @@ description: 使用 yicloud CLI 查询和管理仪电智算云的开发机、训
 | 查询镜像仓库和版本 | `yicloud registry list-public-repositories` / `list-custom-repositories` | [镜像查询](references/images/query.md) |
 | 管理镜像仓库和标签 | `yicloud registry create-custom-repository` / `delete-image` / `update-custom-repository-visibility` | [镜像管理](references/images/manage.md) |
 | 保存开发机环境或推送本地镜像 | `yicloud workspace release-process` / `docker image push` | [镜像保存与推送](references/images/publish.md) |
+| Job 运行管理、日志与产物 | `yicloud job status` / `logs` / `wait` / `stop` / `delete` | [Job 运行管理](references/jobs/observe.md) |
+| 开发机启动、停止、重启与删除 | `yicloud workspace start` / `stop` / `restart` / `delete` | [开发机生命周期](references/workspace/manage.md) |
+| 查询存储、配额、挂载与持久化 | `yicloud fs list-filesets-with-quota-info` | [存储管理](references/storage.md) |
+| 查询计算资源、配额与节点 | `yicloud resources skus` / `quota-groups` / `nodes`；`yicloud project quota` | [计算资源查询](references/resources.md) |
 
 ## 其他任务按需读取
 
 | 任务 | 手册 |
 |---|---|
 | 配置账号、切换项目与可用区 | [访问与上下文](references/access.md) |
-| 为新任务选择规格、配额或资源池 | [资源选择](references/resources.md) |
-| 启停、重启或删除开发机 | [开发机管理](references/workspace/manage.md) |
 | 远程命令与文件复制 | [连接开发机和训练实例](references/workspace/connect.md) |
 | SSH、GPU 或镜像初始化报错 | [远程环境排错](references/workspace/troubleshoot.md) |
-| 训练等待、日志、产物或清理 | [训练观察与结束](references/jobs/observe.md) |
 | Ray 作业及 Worker 调整 | [Ray](references/ray.md) |
 | 创建推理部署 | [部署创建](references/serving/create.md) |
 | 查询、启动、停止或删除部署 | [部署管理](references/serving/manage.md) |
 | 手动或自动扩缩容 | [扩缩容](references/serving/scaling.md) |
 | 推理日志查询或下载 | [部署日志](references/serving/logs.md) |
-| 挂载、传输或验证持久化产物 | [存储](references/storage.md) |
 | 模型、数据集版本管理 | [资产](references/assets.md) |
 | 容器应用托管 / 沙盒 | [应用](references/applications.md) / [沙盒](references/sandbox.md) |
 | 权限、项目、配额管理 | [管理变更](references/administration.md) |

@@ -56,7 +56,8 @@ def query_command(service, action, name):
 
 
 resources = click.Group(
-    "resources", help="Discover current capacity; quota does not guarantee free nodes."
+    "resources",
+    help="Query resource specifications, quota groups, nodes and scheduling predictions.",
 )
 for name, action in {
     "zones": "ListZones",
