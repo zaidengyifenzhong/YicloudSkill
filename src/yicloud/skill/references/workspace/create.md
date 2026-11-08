@@ -37,6 +37,22 @@ yicloud --json workspace create --file "$request_file" --dry-run
 
 Workspace 没有创建时的 Command 或 TaskSpecs；需要启动后执行命令时进入连接手册。不要用 Job 请求结构创建开发机。
 
+## 创建时挂载 GPFS
+
+需要使用 GPFS 提供共享输入或持久化输出时，先确定真实 Source、容器内 Target 和读写权限；已有确认的映射直接复用。缺目录或权限信息时按[存储手册](../storage.md)查询，不从目录显示名、ID 或本地路径猜源 URI。未选择 GPFS 时不自动添加挂载或新建文件集。
+
+挂载使用完整请求文件，在 **Workspace 请求顶层**填写 `MountGpfsVolumes`。下面仅展示挂载字段，必须替换示例源与目标并合并到已准备的完整请求，不能单独作为创建文件：
+
+```json
+{
+  "MountGpfsVolumes": [
+    {"Source": "gpfs://cluster-example/fileset-example", "Target": "/work/data"}
+  ]
+}
+```
+
+dry-run 时核对挂载字段未丢失。创建后，在用户要求的可用性验证中从实际 Target 检查输入文件可读；需要输出时核实写权限。元数据可见或请求通过不等于已挂载成功；临时写入检查只在已授权目录进行并清理自己创建的文件。
+
 ## 提交与验证
 
 检查 dry-run body 的名称、Project/ZoneId、镜像、资源模式和数量、磁盘与挂载是否符合用户要求。通过后，在已有授权内对**同一条快捷或文件命令移除 `--dry-run`**提交，不临时改路径或省略已要求字段。

@@ -16,6 +16,26 @@
 
 使用持久输出路径时，先按[存储手册](../storage.md)确认挂载和消费者权限。离线环境按[环境准备](../environment.md)准备，避免运行时隐式公网下载。
 
+### 创建时挂载 GPFS
+
+用户选择 GPFS 用于共享输入或持久化输出时，先确认 Source、容器内 Target 和读写权限；已有映射直接使用，缺少时按存储手册查询。未选择 GPFS 时不自动挂载或新建文件集。GPFS 上的数据、脚本与输出在命令中使用实际 Target 下的路径。
+
+挂载改用完整请求，放在 **`TaskSpecs` 中需要访问该目录的每个角色内**，不是 Job 顶层。下例仅展示层级，角色名和路径需替换，并合并到包含 Image、Command、Env、Replicas 等字段的完整请求：
+
+```json
+{
+  "TaskSpecs": {
+    "t0": {
+      "MountGpfsVolumes": [
+        {"Source": "gpfs://cluster-example/fileset-example", "Target": "/work/data"}
+      ]
+    }
+  }
+}
+```
+
+不要把 GPFS 填进 Job 顶层 `Mount`，该字段是只读 hostPath。dry-run 核对每个所需角色的挂载及命令路径；运行时从消费者环境验证输入可读、输出可写及产物路径，不能以日志打印路径代替实际文件验证。未获写入授权时不为检查权限创建文件。
+
 ### 快捷请求需要保存为 JSON 时
 
 仅当快捷参数能完整表达需求且用户需要请求文件时，对原快捷命令使用 `--json` 和 `--dry-run`，将成功预览交给[提取脚本](../../scripts/request_from_preview.py)。无需文件时继续使用原快捷命令；复杂拓扑仍按 describe 构造完整文件。

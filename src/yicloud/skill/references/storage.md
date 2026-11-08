@@ -10,6 +10,14 @@
 
 已有存储直接核验；需要发现时按类型查询 `api list --service volume`、`fs` 或 `oss`，根据 command 字段找到专用入口。需要复杂字段时再 describe。云盘或 bucket 管理接口不等于文件上传接口。
 
+尚未确认 GPFS 目录时，按已确定的项目、可用区查询候选：
+
+```bash
+yicloud --json fs list-filesets-with-quota-info --project "$project" --zone "$zone" --all
+```
+
+核对实际返回的目录、集群与当前消费者权限；输入可只读，输出需要写权限。不要只按显示名称相似选择第一个，也不要固定为 gpfs1。Source URI 从用户已确认的挂载来源、指定资源的真实挂载配置或控制台取得，目录 ID 和显示名不能直接当 URI。已有完整 Source/Target 时无需重新枚举；查到候选不意味着授权新建目录、改权限或写入已有数据。
+
 ## 选择传输方式
 
 - 已连接开发机：用 [workspace scp](workspace/connect.md)，复制后检查目标文件。
