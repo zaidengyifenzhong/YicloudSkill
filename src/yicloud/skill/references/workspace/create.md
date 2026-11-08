@@ -9,10 +9,7 @@
 | 缺少的信息 | 对应命令或手册 |
 |---|---|
 | 开发机配额组或规格 | [资源选择](../resources.md)：配额组筛选 `UsageType="workspace"`、`MachineType="CPU"` 或 `"GPU"`；SKU 筛选必填 `SKUType="cpu"` 或 `"gpu"`，用途为 `ResourceType="workspace"`，Scope 沿用实际要求 |
-| 公共镜像仓库 | `yicloud registry list-public-repositories --zone "$zone" --scene workspace --machine-type cpu --all`，GPU 将机型改为 `gpu` |
-| 公共镜像版本 | `yicloud registry list-public-images --zone "$zone" --repository "$repository" --all`，repository 来自仓库结果，不含 `library/` 前缀 |
-| 项目自定义镜像仓库 | `yicloud registry list-custom-repositories --zone "$zone" --project-name "$project" --all` |
-| 项目自定义镜像版本 | `yicloud registry list-custom-images --zone "$zone" --namespace "$project" --repository "$repository" --all` |
+| 公共/项目镜像仓库及版本 | [镜像查询](../images/query.md)：按开发机用途、CPU/GPU、实际项目和可用区查询，已有指定引用不重复选择 |
 
 镜像使用版本查询返回的完整 ImageUrl，不从标签或网关猜 URL。多个候选涉及环境、费用或运行策略时按用户需要选择，无法判断才一次性补问缺少的选择；不选第一个或擅自换最新版本。
 

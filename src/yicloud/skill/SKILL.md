@@ -1,13 +1,13 @@
 ---
 name: yicloud
-description: 使用 yicloud CLI 查询和管理仪电智算云的开发机、训练、Ray、模型部署与存储，并完成 SSH 操作和任务排错。
+description: 使用 yicloud CLI 查询和管理仪电智算云的开发机、训练、镜像仓库、Ray、模型部署与存储，并完成 SSH 操作和任务排错。
 ---
 
 # Yicloud 平台操作
 
 根据用户目标选择能力：Workspace 用于交互开发，Job 用于托管训练，Ray 用于分布式作业，Serving 用于持续推理。沿用用户指定的机器、框架、账号和资源；查询或连接已有资源不进入创建流程。
 
-## 五个核心操作
+## 八个核心操作
 
 只读取当前操作需要的手册；出现异常或进入另一项任务时再加载相关文件。
 
@@ -18,6 +18,9 @@ description: 使用 yicloud CLI 查询和管理仪电智算云的开发机、训
 | 创建 Job | `yicloud job create` | [训练执行](references/jobs/run.md) |
 | 连接开发机 | `yicloud workspace ssh` | [连接与远程操作](references/workspace/connect.md) |
 | 连接 Job 实例 | `yicloud job ssh` | [连接与远程操作](references/workspace/connect.md) |
+| 查询镜像仓库和版本 | `yicloud registry list-public-repositories` / `list-custom-repositories` | [镜像查询](references/images/query.md) |
+| 管理镜像仓库和标签 | `yicloud registry create-custom-repository` / `delete-image` / `update-custom-repository-visibility` | [镜像管理](references/images/manage.md) |
+| 保存开发机环境或推送本地镜像 | `yicloud workspace release-process` / `docker image push` | [镜像保存与推送](references/images/publish.md) |
 
 ## 其他任务按需读取
 
@@ -35,7 +38,7 @@ description: 使用 yicloud CLI 查询和管理仪电智算云的开发机、训
 | 手动或自动扩缩容 | [扩缩容](references/serving/scaling.md) |
 | 推理日志查询或下载 | [部署日志](references/serving/logs.md) |
 | 挂载、传输或验证持久化产物 | [存储](references/storage.md) |
-| 镜像、模型、数据集版本管理 | [资产](references/assets.md) |
+| 模型、数据集版本管理 | [资产](references/assets.md) |
 | 容器应用托管 / 沙盒 | [应用](references/applications.md) / [沙盒](references/sandbox.md) |
 | 权限、项目、配额管理 | [管理变更](references/administration.md) |
 | 账单和指标查询 | [观测](references/observability.md) |
@@ -46,6 +49,7 @@ description: 使用 yicloud CLI 查询和管理仪电智算云的开发机、训
 
 ## 执行约定
 
+- 需要核对平台流程、限制或权限时，优先查阅用户指定的[最新飞书文档索引](https://iqeubg8au73.feishu.cn/wiki/BG9Bwc6RliG4DbkIu2OckJKZnxh)及对应章节；CLI 参数以当前子命令帮助为准。本地 schema 接受某值不证明平台支持该业务操作；文档与接口不一致时先核实，不用写请求试探。无法读取最新说明时明确未核实。
 - 先按目标定位命令，再补齐其必要参数；缺资源信息时用对应只读查询，不用不完整的写请求试错。已知语法直接使用，不确定时只读该子命令的 `--help`。复杂请求查询 `api describe SERVICE ACTION`，它描述固定 SDK 的请求结构，不是实时服务端能力或响应合同。不要为单项任务加载全部接口目录。
 - `--json`、`--account`、`--context` 等全局选项放在子命令前。优先从当前 context、用户输入、已核实资源或查询结果取得参数；只补问真正缺少的信息，不猜镜像、路径、规格或拓扑。
 - 文中的 `$变量` 是调用形式说明：必须先取得真实值并赋值才执行；代码块不是待逐行执行的脚本。无需参数的命令直接使用。完整请求用 `--file`，生命周期附加字段用 `--extra-file`。
