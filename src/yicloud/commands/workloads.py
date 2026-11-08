@@ -96,18 +96,28 @@ def create_command(kind):
 
     command = click.option("--dry-run", is_flag=True)(command)
     if kind in ("workspace", "job"):
+        shortcut_help = {
+            "image": "Full container image reference, including tag or digest.",
+            "sku": "SKU ID; use with --sku-scope instead of quota resource flags.",
+            "quota-group": "Quota-group name; use with CPU and memory quantities.",
+            "cpu": "CPU quantity, e.g. 4 or 500m (quota mode).",
+            "memory": "Memory quantity with units, e.g. 8Gi or 512Mi (quota mode).",
+            "gpu": "GPU count; use 0 for a CPU-only quota workspace.",
+        }
         for name in reversed(
             ("name", "project", "zone", "image", "sku", "quota-group", "cpu", "memory", "gpu")
         ):
             help_text = (
                 "GPU count; defaults to 0 for quota-mode job shortcuts."
                 if name == "gpu" and kind == "job"
-                else None
+                else shortcut_help.get(name)
             )
             command = click.option(f"--{name}", help=help_text)(command)
-        command = click.option("--sku-scope", type=click.Choice(["public", "tenant", "project"]))(
-            command
-        )
+        command = click.option(
+            "--sku-scope",
+            type=click.Choice(["public", "tenant", "project"]),
+            help="SKU visibility scope; required with --sku.",
+        )(command)
         if kind == "job":
             command = click.option(
                 "--use-private-machine/--no-use-private-machine",

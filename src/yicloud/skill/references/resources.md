@@ -11,12 +11,12 @@
 3. 按真实项目、可用区查询候选；支持分页的命令用 `--all` 取得完整结果。
 
 ```bash
-yicloud resources skus --project "$project" --zone "$zone" --set 'Scope="project"' --all
+yicloud resources skus --project "$project" --zone "$zone" --set 'Scope="project"' --set 'SKUType="gpu"' --set 'ResourceType="workspace"' --all
 yicloud resources quota-groups --project "$project" --zone "$zone" --all
 yicloud project quota --project "$project"
 ```
 
-SKU 查询省略 Scope 时为 public，仅传项目不会自动选择项目 SKU。按用户所需范围选择 public、tenant 或 project；先查帮助确定用途筛选参数。
+SKU 示例是 GPU 项目级开发机规格：CPU 将 SKUType 改为 `cpu`，Job/Ray 将 ResourceType 改为 `job`/`ray`，Scope 按用户所需 public、tenant 或 project 选择。SKUType 必填；省略 Scope 时为 public，仅传项目不会自动选择项目 SKU。配额组查询开发机时加 `--set 'UsageType="workspace"'`，Job/Ray 使用 `workload`；CPU/GPU 机型筛选使用 `--set 'MachineType="CPU"'` 或 `"GPU"`。
 
 4. 配额组核对 UsageType 与 MachineType：开发机与 workload、CPU 与 GPU 不能仅凭名称区分。从返回结果取得真实 PoolName/PoolId，再按 `resources available --help` 查询容量。权限失败记为“容量未知”。
 5. 若候选唯一且符合既有要求可继续；多个候选涉及价格、资源或运行策略取舍时让用户选择，不自行挑第一个。

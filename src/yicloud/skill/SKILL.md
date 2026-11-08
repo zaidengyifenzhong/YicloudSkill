@@ -11,13 +11,13 @@ description: 使用 yicloud CLI 查询和管理仪电智算云的开发机、训
 
 只读取当前操作需要的手册；出现异常或进入另一项任务时再加载相关文件。
 
-| 操作 | 手册 |
-|---|---|
-| 查询现有开发机和 Job 及其状态 | [查询已有资源](references/query.md) |
-| 创建开发机 | [开发机创建](references/workspace/manage.md) |
-| 创建 Job | [训练执行](references/jobs/run.md) |
-| 连接开发机 | [连接与远程操作](references/workspace/connect.md) |
-| 连接 Job 实例 | [连接与远程操作](references/workspace/connect.md) |
+| 操作 | 入口命令 | 手册 |
+|---|---|---|
+| 查询现有开发机和 Job 及其状态 | `yicloud workspace list` / `yicloud job list`；单项用 `status` | [查询已有资源](references/query.md) |
+| 创建开发机 | `yicloud workspace create` | [开发机创建](references/workspace/create.md) |
+| 创建 Job | `yicloud job create` | [训练执行](references/jobs/run.md) |
+| 连接开发机 | `yicloud workspace ssh` | [连接与远程操作](references/workspace/connect.md) |
+| 连接 Job 实例 | `yicloud job ssh` | [连接与远程操作](references/workspace/connect.md) |
 
 ## 其他任务按需读取
 
@@ -46,7 +46,7 @@ description: 使用 yicloud CLI 查询和管理仪电智算云的开发机、训
 
 ## 执行约定
 
-- 已知命令直接使用；语法不确定时读取该命令的 `--help`。复杂请求查询 `api describe SERVICE ACTION`，它描述固定 SDK 的请求结构，不是实时服务端能力或响应合同。不要为单项任务加载全部接口目录。
+- 先按目标定位命令，再补齐其必要参数；缺资源信息时用对应只读查询，不用不完整的写请求试错。已知语法直接使用，不确定时只读该子命令的 `--help`。复杂请求查询 `api describe SERVICE ACTION`，它描述固定 SDK 的请求结构，不是实时服务端能力或响应合同。不要为单项任务加载全部接口目录。
 - `--json`、`--account`、`--context` 等全局选项放在子命令前。优先从当前 context、用户输入、已核实资源或查询结果取得参数；只补问真正缺少的信息，不猜镜像、路径、规格或拓扑。
 - 文中的 `$变量` 是调用形式说明：必须先取得真实值并赋值才执行；代码块不是待逐行执行的脚本。无需参数的命令直接使用。完整请求用 `--file`，生命周期附加字段用 `--extra-file`。
 - 显示名称使用命令支持的 `--by-name`；把分页、名称消歧、字段转换交给 CLI。零匹配或多匹配时不写入。通用 API 不提供全部工作流保护，使用前阅读其手册。
