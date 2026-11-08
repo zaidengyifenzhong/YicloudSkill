@@ -2,18 +2,11 @@
 
 ## 何时读取
 
-创建、列出、查看、启动、停止、重启或删除开发机时读取。仅需连接现有机器时转到[连接手册](connect.md)。
+创建、启动、停止、重启或删除开发机时读取。清单和状态查询见[查询已有资源](../query.md)；仅需连接现有机器时转到[连接手册](connect.md)。
 
 ## 查询和定位
 
-已有 WorkspaceId 时直接使用。显示名称使用 `--by-name`，范围来自已确认的 context 或显式项目、可用区。
-
-```bash
-yicloud workspace list --all
-yicloud workspace status "$workspace_name" --by-name
-```
-
-查询“我的开发机”需要已确认的平台用户名 Creator，不是本地账号别名：通过 `list --set` 或按名操作的 `--lookup-set` 传相同过滤。省略 Creator 的空列表不能作为没有资源的唯一证据；不要用本地 SSH 登记冒充平台列表。零匹配或多匹配时补齐范围，不选择第一项。
+按[查询手册](../query.md)确定范围并定位唯一目标；已有 WorkspaceId 可省去名称解析，操作仍使用已确认的项目和可用区。不要用本地 SSH 登记冒充平台列表。
 
 ## 创建
 

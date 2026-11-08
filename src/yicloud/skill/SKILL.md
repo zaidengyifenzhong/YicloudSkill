@@ -7,19 +7,28 @@ description: 使用 yicloud CLI 查询和管理仪电智算云的开发机、训
 
 根据用户目标选择能力：Workspace 用于交互开发，Job 用于托管训练，Ray 用于分布式作业，Serving 用于持续推理。沿用用户指定的机器、框架、账号和资源；查询或连接已有资源不进入创建流程。
 
-## 按任务读取
+## 五个核心操作
 
-只读取当前任务需要的手册。一个手册包含该任务的正常流程；出现异常或进入另一项任务时再加载相关文件。
+只读取当前操作需要的手册；出现异常或进入另一项任务时再加载相关文件。
+
+| 操作 | 手册 |
+|---|---|
+| 查询现有开发机和 Job 及其状态 | [查询已有资源](references/query.md) |
+| 创建开发机 | [开发机创建](references/workspace/manage.md) |
+| 创建 Job | [训练执行](references/jobs/run.md) |
+| 连接开发机 | [连接与远程操作](references/workspace/connect.md) |
+| 连接 Job 实例 | [连接与远程操作](references/workspace/connect.md) |
+
+## 其他任务按需读取
 
 | 任务 | 手册 |
 |---|---|
 | 配置账号、切换项目与可用区 | [访问与上下文](references/access.md) |
 | 为新任务选择规格、配额或资源池 | [资源选择](references/resources.md) |
-| 创建、查询或启停开发机 | [开发机管理](references/workspace/manage.md) |
-| SSH、远程命令与文件复制 | [连接开发机和训练实例](references/workspace/connect.md) |
+| 启停、重启或删除开发机 | [开发机管理](references/workspace/manage.md) |
+| 远程命令与文件复制 | [连接开发机和训练实例](references/workspace/connect.md) |
 | SSH、GPU 或镜像初始化报错 | [远程环境排错](references/workspace/troubleshoot.md) |
-| 提交或运行训练 | [训练执行](references/jobs/run.md) |
-| 查询训练、日志、产物或清理 | [训练观察与结束](references/jobs/observe.md) |
+| 训练等待、日志、产物或清理 | [训练观察与结束](references/jobs/observe.md) |
 | Ray 作业及 Worker 调整 | [Ray](references/ray.md) |
 | 创建推理部署 | [部署创建](references/serving/create.md) |
 | 查询、启动、停止或删除部署 | [部署管理](references/serving/manage.md) |
