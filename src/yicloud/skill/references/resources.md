@@ -55,7 +55,7 @@ SKUType 用小写 `cpu/gpu`，MachineType 用大写 `CPU/GPU`。SKU Scope 可为
 
 ## 配额、占用与可调度容量分开报告
 
-- `project quota` 返回的 QuotaStatus、SkuQuotaStatus 按各自字段报告。TotalQuota、AllocatedQuota、UsedQuota 或 SKU 的 Total/Requested/Used/Available 属于配额及占用口径，不是物理空闲容量；不混用单位或自行相减后称为“空闲 GPU”。`quota-limit` 的 MinQuota/MaxQuota 也不是最小/最大单机规格。
+- `project quota` 返回的 QuotaStatus、SkuQuotaStatus 按各自字段报告。TotalQuota、AllocatedQuota、UsedQuota、ChargedQuota 或 SKU 的 Total/Requested/Used/Available 属于不同配额及占用口径，不是物理空闲容量；不混用单位或自行相减后称为“空闲 GPU”。配额组的 TotalQuota 减 UsedQuota 也不保证还能创建，准入额度可能采用不同口径；外层报“规格不合法”时先看错误 `hints` 的具体配额或业务原因，不据此盲目改规格。`quota-limit` 的 MinQuota/MaxQuota 也不是最小/最大单机规格。
 - 配额组中的 MachineCount、PodCount、QuotaStatus 是组级信息，不能据此保证某个请求可调度。需要节点信息时，在明确组/池范围内查 `resources nodes --all`，保留节点状态、维护/调度条件和资源字段的实际含义；节点数量不等于空闲机器数量，不展开用户实例或任务内容。
 - `resources available` 映射 `mc ListQuotaGroupResourcePoolSharedNodes`：查询指定池中尚未关联目标配额组的节点，**不是通用空闲容量接口**。仅此目标才使用；先核对 `api describe mc ListQuotaGroupResourcePoolSharedNodes`，提供真实 QuotaGroup（本地必填）及 PoolId 或 PoolName（描述要求至少一个，二者同时传时优先 PoolId），并限定 project、zone。不把返回节点视为当前组已可使用的资源，也不为测试关联节点。
 - `resources predict` 是开发机创建前资源预判。先读 `api describe workspace GetPredict`，必填 Project、ZoneId，其他调度字段来自已核实的目标配置；不猜无说明的 Pool、ResourceType 或单位。预测不预留资源，也不自动适用于 Job/Ray/Serving。

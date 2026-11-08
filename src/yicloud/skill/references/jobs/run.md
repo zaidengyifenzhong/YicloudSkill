@@ -12,6 +12,7 @@
 - 多角色、挂载或完整启动参数：查询 `api describe job CreateJob`，保存完整 JSON。TaskSpecs 是角色名映射，不是数组；请求文件不补 context，也不能和快捷参数混用。
 - SKU 与配额模式二选一。CPU 配额快捷创建省略 GPU 时发送 0；完整文件按真实需要显式填写 GPU，不能假定相同默认值。
 - 私有资源选择、QoS、优先级仅按用户要求与实际资源组填写。它们省略时交给平台，不将一次测试配置变成全局默认。
+- 已选配额组的 `AllocateScope` 为 `quotagroup_private`，且任务目标是该组私有节点时，快捷命令显式加 `--use-private-machine`，完整请求填写 `UsePrivateMachine: true`；不要期待省略后自动选择该组私有节点。其他分配范围或用户指定调度策略仍按实际要求核对。
 - 用户要求限制排队或运行时间时，可用 `--max-wait-duration` / `--max-running-duration`（正整数 s/m/h/d）。它们是远端任务时限，区别于本地 `wait --timeout`。
 
 使用持久输出路径时，先按[存储手册](../storage.md)确认挂载和消费者权限。H200 Job 按默认无公网准备；H200 及其他离线环境先按[环境准备](../environment.md)交付所需文件，不在启动命令里假定可公网下载，此要求不以使用 GPFS 为前提。
