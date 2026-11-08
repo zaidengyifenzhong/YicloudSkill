@@ -220,12 +220,12 @@ def test_ambiguous_create_failure_keeps_inspect_before_retry_semantics(account):
 
 
 @pytest.mark.parametrize("allow_unknown", [True, False])
-def test_runtime_cluster_enum_remains_strict_with_catalog_hint(allow_unknown):
-    # The observed server value is not silently accepted as a new API contract.
+def test_closed_fs_enum_remains_strict_with_catalog_hint(allow_unknown):
+    # The FsCluster compatibility correction does not relax other SDK enums.
     op = operation("fs", "ListFilesetsWithQuotaInfo")
     with pytest.raises(InputError) as exc:
-        validate(op, {"FsCluster": "gpfs2"}, allow_unknown)
-    assert "FsCluster: expected one of" in str(exc.value)
+        validate(op, {"Fs": "unknown-filesystem"}, allow_unknown)
+    assert "Fs: expected one of" in str(exc.value)
     assert "SDK v0.5.1" in exc.value.hints[0]
     assert "does not bypass enum validation" in exc.value.hints[0]
 

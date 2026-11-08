@@ -32,6 +32,14 @@ yicloud --json resources nodes --project "$project" --zone "$zone" --set "$quota
 
 按池查询时，将组筛选替换为 `ResourcePoolId=` 加真实池 ID 的 JSON 字符串；按目标用途/机型替换其他筛选。不因当前没有节点查询权限而扩大范围。
 
+### 节点查询失败时先区分响应
+
+`resources nodes` 对应固定 SDK 的 `GET /mc/v1alpha1/ListNodes`；[官方 SDK](https://gitee.com/yicloud-team/openapi-sdk-go/tree/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services/mc) 的请求字段是 `Project`、`ZoneId`、`QuotaGroup`、`ResourcePoolId`。不要因为字段注释出现 ProjectName 就换成未声明字段，也不要将配额组返回的 PoolId 原样作为请求字段名。
+
+已验证的同一账号、项目和 zone 下，组查询返回 HTTP 200、`Code=0`、`Data.Items=null`、`Total=0` 和明确的 Limit/Offset；旧 CLI 的 `--all` 随后报 `Unrecognized list response`，错误 code 为空。这是客户端空列表兼容问题，不能归因于权限。CLI 现在仅对 ListNodes 的这个明确空页合同将 Items 规范化为 `[]`，单页和 `--all` 均保留其他响应字段；Total 缺失、非整数或大于零、分页偏移不一致等响应仍报错并保留 request_id。空页只表示该筛选范围没有返回节点，不能推断物理空闲 GPU 数量。
+
+同次按池查询实际返回 HTTP 200、`Code=101`、`Msg=鉴权失败`，服务端 `_err` 明确要求租户管理员或项目管理员才能查询项目节点列表；这是该路径的平台授权限制，与上述组查询不同。这条响应未核实用户当前角色，也不证明其他范围的统一授权规则。保留必要筛选、错误码、HTTP 状态及 request_id 交由平台核查。CLI 不自动重试、换账号、扩大查询范围或关联节点。组元数据、项目配额和 SKU 可作为只读替代信息，分别按各自口径报告，均不能替代未取得的节点容量证据。
+
 字段和值区分大小写，不能在不同接口间照搬：
 
 | 目标 | SKU 的 ResourceType | 配额组/节点的 UsageType |

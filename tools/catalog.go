@@ -299,7 +299,9 @@ func main() {
 	sort.Slice(ops, func(i, j int) bool {
 		return fmt.Sprint(ops[i]["service"], ops[i]["action"]) < fmt.Sprint(ops[j]["service"], ops[j]["action"])
 	})
-	// Curated SDK comment constraints that are not present in binding tags.
+	// Curated SDK constraints and narrowly sourced live-contract corrections.
+	// Explicit null removes an existing inferred constraint; it is not a JSON
+	// Schema null value. Other attributes and all unlisted fields stay intact.
 	data, err := os.ReadFile("tools/catalog_overrides.json")
 	if err != nil {
 		panic(err)
@@ -325,8 +327,15 @@ func main() {
 				if !ok {
 					fail("override references missing field %s/%s", key, name)
 				}
-				for key, value := range constraints {
-					field[key] = value
+				for constraint, value := range constraints {
+					if value == nil {
+						if _, exists := field[constraint]; !exists {
+							fail("override removes missing constraint %s/%s/%s", key, name, constraint)
+						}
+						delete(field, constraint)
+					} else {
+						field[constraint] = value
+					}
 				}
 			}
 			applied++

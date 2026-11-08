@@ -2,8 +2,73 @@
   "mc/ListSKUs": {
     "source": "services/mc/models.go:1037-1046; SDK comments define SKUType and Scope",
     "fields": {
-      "SKUType": {"enum": ["cpu", "gpu"]},
-      "Scope": {"enum": ["public", "tenant", "project"]}
+      "SKUType": {
+        "enum": [
+          "cpu",
+          "gpu"
+        ]
+      },
+      "Scope": {
+        "enum": [
+          "public",
+          "tenant",
+          "project"
+        ]
+      }
+    }
+  },
+  "fs/CreateFilesetWithQuota": {
+    "source": "https://gitee.com/yicloud-team/openapi-sdk-go/blob/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services/fs/models.go; FsCluster is *string with binding=omitempty, without oneof. SDK constants are not a closed enum; ListAvailableGpfsClusters discovers actual values. GetFileset and ListFilesetsWithQuotaInfo with explicit FsCluster accepted a discovered non-gpfs1 cluster in read-only platform verification. Write business rules remain unverified.",
+    "fields": {
+      "FsCluster": {
+        "enum": null,
+        "description": "文件系统集群；从 ListAvailableGpfsClusters 或已核实配置取得，SDK 常量不是封闭枚举"
+      }
+    }
+  },
+  "fs/DeleteFileset": {
+    "source": "https://gitee.com/yicloud-team/openapi-sdk-go/blob/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services/fs/models.go; FsCluster is *string with binding=omitempty, without oneof. SDK constants are not a closed enum; ListAvailableGpfsClusters discovers actual values. GetFileset and ListFilesetsWithQuotaInfo with explicit FsCluster accepted a discovered non-gpfs1 cluster in read-only platform verification. Write business rules remain unverified.",
+    "fields": {
+      "FsCluster": {
+        "enum": null,
+        "description": "文件系统集群；从 ListAvailableGpfsClusters 或已核实配置取得，SDK 常量不是封闭枚举"
+      }
+    }
+  },
+  "fs/GetFileset": {
+    "source": "https://gitee.com/yicloud-team/openapi-sdk-go/blob/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services/fs/models.go; FsCluster is *string with binding=omitempty, without oneof. SDK constants are not a closed enum; ListAvailableGpfsClusters discovers actual values. GetFileset and ListFilesetsWithQuotaInfo with explicit FsCluster accepted a discovered non-gpfs1 cluster in read-only platform verification. Write business rules remain unverified.",
+    "fields": {
+      "FsCluster": {
+        "enum": null,
+        "description": "文件系统集群；从 ListAvailableGpfsClusters 或已核实配置取得，SDK 常量不是封闭枚举"
+      }
+    }
+  },
+  "fs/ListFilesetsWithQuotaInfo": {
+    "source": "https://gitee.com/yicloud-team/openapi-sdk-go/blob/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services/fs/models.go; FsCluster is *string with binding=omitempty, without oneof. SDK constants are not a closed enum; ListAvailableGpfsClusters discovers actual values. GetFileset and ListFilesetsWithQuotaInfo with explicit FsCluster accepted a discovered non-gpfs1 cluster in read-only platform verification. Write business rules remain unverified.",
+    "fields": {
+      "FsCluster": {
+        "enum": null,
+        "description": "文件系统集群；从 ListAvailableGpfsClusters 或已核实配置取得，SDK 常量不是封闭枚举"
+      }
+    }
+  },
+  "fs/SetFilesetQuota": {
+    "source": "https://gitee.com/yicloud-team/openapi-sdk-go/blob/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services/fs/models.go; FsCluster is *string with binding=omitempty, without oneof. SDK constants are not a closed enum; ListAvailableGpfsClusters discovers actual values. GetFileset and ListFilesetsWithQuotaInfo with explicit FsCluster accepted a discovered non-gpfs1 cluster in read-only platform verification. Write business rules remain unverified.",
+    "fields": {
+      "FsCluster": {
+        "enum": null,
+        "description": "文件系统集群；从 ListAvailableGpfsClusters 或已核实配置取得，SDK 常量不是封闭枚举"
+      }
+    }
+  },
+  "fs/UpdateFileset": {
+    "source": "https://gitee.com/yicloud-team/openapi-sdk-go/blob/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services/fs/models.go; FsCluster is *string with binding=omitempty, without oneof. SDK constants are not a closed enum; ListAvailableGpfsClusters discovers actual values. GetFileset and ListFilesetsWithQuotaInfo with explicit FsCluster accepted a discovered non-gpfs1 cluster in read-only platform verification. Write business rules remain unverified.",
+    "fields": {
+      "FsCluster": {
+        "enum": null,
+        "description": "文件系统集群；从 ListAvailableGpfsClusters 或已核实配置取得，SDK 常量不是封闭枚举"
+      }
     }
   }
 }

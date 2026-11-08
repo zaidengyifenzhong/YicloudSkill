@@ -1451,10 +1451,7 @@
           },
           "FsCluster": {
             "binding": "omitempty",
-            "description": "SDK常量: FsClusterGpfs1",
-            "enum": [
-              "gpfs1"
-            ],
+            "description": "文件系统集群；从 ListAvailableGpfsClusters 或已核实配置取得，SDK 常量不是封闭枚举",
             "nullable": true,
             "type": "string"
           },
@@ -1520,10 +1517,7 @@
           },
           "FsCluster": {
             "binding": "omitempty",
-            "description": "SDK常量: FsClusterGpfs1",
-            "enum": [
-              "gpfs1"
-            ],
+            "description": "文件系统集群；从 ListAvailableGpfsClusters 或已核实配置取得，SDK 常量不是封闭枚举",
             "nullable": true,
             "type": "string"
           },
@@ -1703,10 +1697,7 @@
           },
           "FsCluster": {
             "binding": "omitempty",
-            "description": "文件系统集群，枚举值: gpfs1. SDK常量: FsClusterGpfs1",
-            "enum": [
-              "gpfs1"
-            ],
+            "description": "文件系统集群；从 ListAvailableGpfsClusters 或已核实配置取得，SDK 常量不是封闭枚举",
             "nullable": true,
             "type": "string"
           },
@@ -1855,10 +1846,7 @@
           },
           "FsCluster": {
             "binding": "omitempty",
-            "description": "文件系统集群，枚举值: gpfs1. SDK常量: FsClusterGpfs1",
-            "enum": [
-              "gpfs1"
-            ],
+            "description": "文件系统集群；从 ListAvailableGpfsClusters 或已核实配置取得，SDK 常量不是封闭枚举",
             "nullable": true,
             "type": "string"
           },
@@ -1933,10 +1921,7 @@
           },
           "FsCluster": {
             "binding": "omitempty",
-            "description": "SDK常量: FsClusterGpfs1",
-            "enum": [
-              "gpfs1"
-            ],
+            "description": "文件系统集群；从 ListAvailableGpfsClusters 或已核实配置取得，SDK 常量不是封闭枚举",
             "nullable": true,
             "type": "string"
           },
@@ -1986,10 +1971,7 @@
           },
           "FsCluster": {
             "binding": "omitempty",
-            "description": "SDK常量: FsClusterGpfs1",
-            "enum": [
-              "gpfs1"
-            ],
+            "description": "文件系统集群；从 ListAvailableGpfsClusters 或已核实配置取得，SDK 常量不是封闭枚举",
             "nullable": true,
             "type": "string"
           },

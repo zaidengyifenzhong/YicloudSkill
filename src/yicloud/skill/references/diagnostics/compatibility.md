@@ -22,7 +22,15 @@
 | InferSet 列表 | CLI 兼容 Data 数组及固定 SDK 的 GetInferSetLogsQueryRangeData；其他结构报错，不能当作空列表 |
 | fs/alpha | 实际产品路径与操作名不同，使用 CLI 路由；直接 files/items/total 响应不强套 Data 信封 |
 | 训练创建策略 | 某些环境拒绝特定 RestartPolicy/BackoffLimit 组合，按 hints 核对；不静默删除用户重试策略 |
-| 文件集枚举 | 实时集群值可能不在固定请求枚举内；未知字段开关不会放开枚举，不能改成另一集群提交 |
+| 文件集集群 | 六个 `fs` 文件集管理请求的 `FsCluster` 按官方 SDK 的可空字符串接收；`gpfs1` 常量不是封闭枚举，实际值从可用集群查询或已核实配置取得，其他枚举仍严格校验 |
+
+### GPFS 集群字段
+
+[固定官方 SDK 定义](https://gitee.com/yicloud-team/openapi-sdk-go/blob/8f8d27e2b466b7ceac5dacfa12900d03ad70e3d5/services/fs/models.go)中，`CreateFilesetWithQuota`、`DeleteFileset`、`GetFileset`、`ListFilesetsWithQuotaInfo`、`SetFilesetQuota`、`UpdateFileset` 的 `FsCluster` 均为 `*string`，`binding` 仅为 `omitempty`，没有 `oneof` 约束。SDK 的 `gpfs1` 常量和注释此前被目录生成器推导为封闭枚举；CLI 通过有来源的定点覆盖移除这六处推导枚举，保留字符串类型、可空性、必填项及其他枚举校验，不维护固定集群名单。
+
+[可用集群查询](https://api.yicloud.com.cn/fs/list_available_gpfs_clusters.html)用于发现目标可用区的真实集群。只读联测已确认 `GetFileset` 与带 `FsCluster` 的 `ListFilesetsWithQuotaInfo` 可使用查询得到的非 `gpfs1` 集群；详情按精确名称及集群返回，但列表可能仍包含其他集群，接受参数不证明筛选已生效，必须核对每项 `BucketResponse.FsCluster`。这不代表创建、删除、扩容或授权变更的当前业务规则已验证。[GetFileset 在线说明](https://api.yicloud.com.cn/fs/get_fileset.html)仍只列 `gpfs1`，不能把文档差异隐藏为全部平台合同已核实。
+
+操作时核对真实文件集名称与 `FsCluster`，不把 Source、Id 或容器路径推导为集群，不换成另一个集群让请求通过。本地允许字符串不证明线上存在、可用或已获授权；写操作仍需核实目标、权限和最新业务限制。
 
 ## 状态、就绪与删除
 

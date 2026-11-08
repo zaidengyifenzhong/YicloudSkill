@@ -4,8 +4,73 @@ import click
 
 from ..catalog import operation, request_schema
 from ..cli_support import assignments, client_for, emit_result, read_json, scope_for
-from ..errors import InputError
+from ..errors import InputError, YicloudError
 from ..workflows import paginated, scoped_params
+
+
+class _NodePages:
+    """Adapt the observed ListNodes nil-slice response without relaxing other lists."""
+
+    def __init__(self, client):
+        self.client = client
+        self.first_data = None
+        self.current = None
+
+    def call(self, service, action, params):
+        self.current = None
+        result = self.client.call(service, action, params)
+        self.current = result
+        data = result.data
+        message = None
+        if not isinstance(data, dict) or "Items" not in data:
+            message = "Unrecognized ListNodes response; node visibility is not verified"
+        elif "Offset" in data and (
+            type(data["Offset"]) is not int or data["Offset"] != params["Offset"]
+        ):
+            message = "ListNodes response Offset does not match the request"
+        elif self.first_data is not None and data.get("Total") != self.first_data.get("Total"):
+            message = "ListNodes Total changed between pages; completeness is not verified"
+        elif data["Items"] is None:
+            # The pinned SDK declares Items as []NodeData. A successful live reply
+            # serializes the empty slice as null, with explicit pagination fields.
+            if not (
+                type(data.get("Total")) is int
+                and data["Total"] == 0
+                and type(data.get("Offset")) is int
+                and data["Offset"] >= 0
+                and type(data.get("Limit")) is int
+                and data["Limit"] > 0
+            ):
+                message = "ListNodes null Items lacks a verified empty-page contract"
+            else:
+                result.data = dict(data, Items=[])
+        elif not isinstance(data["Items"], list):
+            message = "ListNodes Items is not a node list"
+        if message:
+            raise YicloudError(
+                message, request_id=result.request_id, http_status=result.raw.status_code
+            )
+        if self.first_data is None:
+            self.first_data = dict(result.data)
+        return result
+
+
+def _query_result(client, service, action, params, all_pages):
+    if (service, action) != ("mc", "ListNodes"):
+        return paginated(client, service, action, params, all_pages)
+    pages = _NodePages(client)
+    try:
+        result = paginated(pages, service, action, params, all_pages)
+    except YicloudError as error:
+        if pages.current is not None and error.request_id is None:
+            error.request_id = pages.current.request_id
+            error.http_status = pages.current.raw.status_code
+        raise
+    if all_pages:
+        # Keep the server's additional node metadata; generic pagination returns
+        # only Items/Total. These fields are copied, never interpreted as capacity.
+        result.data = dict(pages.first_data, **result.data)
+    return result
 
 
 def query_command(service, action, name):
@@ -36,7 +101,9 @@ def query_command(service, action, name):
             )
             params.update(scoped_params(service, action, project, zone))
         with client_for(ctx) as client:
-            emit_result(ctx, paginated(client, service, action, params, all_pages), service, action)
+            emit_result(
+                ctx, _query_result(client, service, action, params, all_pages), service, action
+            )
 
     if "Limit" in fields and "Offset" in fields:
         command = click.option("--all", "all_pages", is_flag=True, help="Read all pages.")(command)
