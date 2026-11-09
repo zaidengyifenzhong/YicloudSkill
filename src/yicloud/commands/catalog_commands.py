@@ -56,8 +56,6 @@ def request_command(service, action, name):
     guarded_write = workload_write_kind(service, action) is not None
     can_page = op["read_only"] and {"Limit", "Offset"} <= fields.keys()
     can_download = op["response_mode"] == "file"
-    # Indexed parameter names keep official field spelling separate from Click names.
-    names = {f"field_{index}": field for index, field in enumerate(fields)}
 
     @click.pass_context
     def command(ctx, file, settings, dry_run, **values):
@@ -66,9 +64,9 @@ def request_command(service, action, name):
         all_pages = values.pop("all_pages", False)
         output = values.pop("output", None)
         explicit = {
-            field: values[key]
-            for key, field in names.items()
-            if ctx.get_parameter_source(key) == click.core.ParameterSource.COMMANDLINE
+            field: values[field]
+            for field in fields
+            if ctx.get_parameter_source(field) == click.core.ParameterSource.COMMANDLINE
         }
         ctx.obj["secrets"].extend(secret_values(explicit))
         if file is not None and (explicit or settings or resource is not None):
@@ -145,13 +143,12 @@ def request_command(service, action, name):
         ),
     ]
     flags = field_flags(fields)
-    for key, field in names.items():
-        spec = fields[field]
+    for field, spec in fields.items():
         required = " Required by API." if field in schema.get("required", []) else ""
         choices = " Values: " + ", ".join(spec["enum"]) + "." if spec.get("enum") else ""
         options.append(
             click.Option(
-                ["--" + flags[field], key],
+                ["--" + flags[field], field],
                 type=field_type(spec),
                 default=None,
                 help=f"{field}: {spec.get('description', '')}.{required}{choices}",

@@ -33,14 +33,14 @@ def validate(op, value, allow_unknown=False):
             return
         typ = s.get("type")
         checks = {
-            "object": lambda: isinstance(v, dict),
-            "array": lambda: isinstance(v, list),
-            "string": lambda: isinstance(v, str),
-            "boolean": lambda: type(v) is bool,
-            "integer": lambda: type(v) is int,
-            "number": lambda: type(v) in (int, float),
+            "object": isinstance(v, dict),
+            "array": isinstance(v, list),
+            "string": isinstance(v, str),
+            "boolean": type(v) is bool,
+            "integer": type(v) is int,
+            "number": type(v) in (int, float),
         }
-        if typ in checks and not checks[typ]():
+        if typ in checks and not checks[typ]:
             raise InputError(f"{path}: expected {typ}")
         if "enum" in s and str(v) not in s["enum"]:
             raise InputError(
