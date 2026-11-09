@@ -2,6 +2,7 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_call:
 permissions:
   contents: read
 jobs:
@@ -10,7 +11,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python: ['3.10', '3.12', '3.14']
+        python: ['3.10', '3.11', '3.12']
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -25,6 +26,7 @@ jobs:
       - run: python tools/validate_skill.py
       - run: python tools/evaluate_skill.py
       - run: python -m build --no-isolation
+      - run: python tools/check_release.py
       - name: Locate wheel
         shell: python
         run: |
@@ -45,6 +47,12 @@ jobs:
       - name: Verify pipx installer
         if: matrix.python == '3.12'
         run: python tools/check_installer.py dist --wheelhouse wheelhouse --manager pipx
+      - name: Verify standalone venv installer
+        if: matrix.python == '3.12'
+        run: python tools/check_installer.py dist --wheelhouse wheelhouse --manager venv
+      - name: Verify update handoff with all managers
+        if: matrix.python == '3.12'
+        run: python tools/check_updater.py dist --wheelhouse wheelhouse
       - name: Installer syntax (Bash)
         if: runner.os != 'Windows'
         run: bash -n install.sh

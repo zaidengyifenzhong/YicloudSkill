@@ -1,100 +1,196 @@
 # YicloudSkill
 
-让 Codex、Claude Code 使用仪电智算云：查询算力、管理开发机、提交训练任务、部署模型，以及通过 SSH 执行命令和传输文件。
+## Overview
 
-项目包含 Agent Skill、`yicloud` CLI 和 Python 客户端。Skill 提供操作指引，CLI 和 Python 客户端也可单独使用。
+YicloudSkill 为 Codex 和 Claude Code 提供操作[仪电智算云](https://api.yicloud.com.cn/)的 Agent Skill，同时提供独立的 Python SDK 和 `yicloud` CLI。CLI、SDK、内置 Skill 使用同一个 Python 包版本发布，Git tag 格式为 `vX.Y.Z`。
 
-## 安装
+## Features
 
-需要 Git、[uv](https://docs.astral.sh/uv/) 和 Python 3.10+；下面使用 Python 3.12。先安装 CLI，再安装它自带的 Skill：
+- 查询项目、可用区、镜像、存储及计算规格。
+- 管理开发机、训练 Job，检查任务状态、日志及产物。
+- 通过 SSH/SFTP/SCP 执行远程命令和传输文件。
+- 提供 Ray、模型部署等接口及本地请求校验；实际联测范围见下文。
+- 管理本地账号和工作上下文，检查安装状态，统一更新 CLI 与已有 Skill。
 
-```bash
-uv tool install --python 3.12 'git+https://github.com/zaidengyifenzhong/YicloudSkill.git@main'
-yicloud skill install --target all
-yicloud skill status --target all
+Agent Skill 提供操作流程与参数指引；CLI 和 Python SDK 负责调用 API，可以单独使用。
+
+## Installation
+
+要求 Python 3.10+。uv 和 pipx 是可选安装管理器，普通用户安装不需要 root 或开发依赖。**选择一种安装方式**，避免多套 `yicloud` 争用 PATH。
+
+### 稳定版
+
+正式稳定版以 PyPI 为优先分发渠道。以下命令适用于维护者完成首次 PyPI 发布之后；本次仓库重构本身不代表 `0.4.0` 已发布。若 PyPI 尚无此项目，请使用下面明确标注的 GitHub 开发版安装方式。
+
+Linux、macOS、Windows（PowerShell）均可使用：
+
+```sh
+uv tool install yicloud-skill
 ```
 
-`--target all` 同时安装到 Codex 和 Claude Code。只用其中一个时，把安装和更新命令中的 `all` 换成 `codex` 或 `claude`。
+或：
 
-默认目录为 `~/.codex/skills/yicloud` 和 `~/.claude/skills/yicloud`；设置了 `CODEX_HOME` 时，Codex 使用该目录下的 `skills/yicloud`。找不到 `yicloud` 命令时，运行 `uv tool update-shell` 并重新打开终端。
-
-也可克隆仓库后运行 `bash install.sh`（macOS / Linux）或 `.\install.ps1`（Windows）；脚本支持 uv 和 pipx。
-
-## 更新 Skill
-
-先从仓库 `main` 更新 CLI 及其自带的 Skill，再同步到 Agent 目录：
-
-```bash
-uv tool install --python 3.12 --force --upgrade 'git+https://github.com/zaidengyifenzhong/YicloudSkill.git@main'
-yicloud skill install --target all
-yicloud skill status --target all
+```sh
+pipx install yicloud-skill
 ```
 
-只更新 CLI、执行 `git pull` 或推送仓库，都不会自动更新 Agent 目录里的 Skill。`skill install` 可以重复运行，用于同步当前 CLI 自带的版本。
+选择 Agent 并验证安装：
 
-`skill status` 中目标的 `state` 为 `matching`，表示它与当前 CLI 自带的 Skill 一致，不代表已经检查过远端最新版。若安装器报告本地修改或同名目录冲突，先备份并移走提示的文件或目录，再重新安装；安装器不会直接覆盖这些内容。
+```sh
+yicloud skill install --target codex
+yicloud skill status --target codex
+yicloud --version
+yicloud doctor local
+```
 
-## 快速开始
+将 `codex` 换为 `claude` 或 `all` 可选择 Claude Code 或同时安装。仅安装 Python 包不会创建 Agent 目录。
 
-按提示配置已有云平台账号的凭据；`account add` 只添加本地配置，不创建平台账号：
+| Agent | 默认 Skill 目录 |
+| --- | --- |
+| Codex | `~/.codex/skills/yicloud`，设置 `CODEX_HOME` 后为 `$CODEX_HOME/skills/yicloud` |
+| Claude Code | `~/.claude/skills/yicloud` |
 
-```bash
+`--path` 可指定单个目标的完整 Skill 目录；新安装会记录该路径以供后续自动同步。旧版的自定义路径请重新执行一次带相同 `--path` 的 `skill install`。默认路径中的旧版受管理安装会自动发现。
+
+### 本地安装脚本与独立 venv
+
+先检出并检查脚本，再执行；不需要管道执行远程脚本：
+
+```sh
+git clone https://github.com/zaidengyifenzhong/YicloudSkill.git
+cd YicloudSkill
+```
+
+Linux / macOS：
+
+```sh
+bash install.sh --target codex
+# 没有 uv/pipx 时，使用 Python 自带的 venv 和 pip
+bash install.sh --manager venv --target codex
+```
+
+Windows PowerShell：
+
+```powershell
+.\install.ps1 -Target codex
+.\install.ps1 -Manager venv -Target codex
+```
+
+脚本默认安装 PyPI 稳定版；`auto` 优先复用 `~/.local/share/yicloud-skill/venv`，否则选择已有 uv、pipx，均不存在时创建上述独立 venv。POSIX 需要 `python3`，Windows 需要 PATH 中的 `python`；部分 Linux 发行版需先通过系统包管理器提供 Python venv 支持。脚本不会修改其他 Python 环境。可用 `--venv PATH` / `-Venv PATH` 指定独立环境，`--target none` / `-Target none` 只安装 CLI。
+
+脚本会执行 CLI、Skill 和 `doctor local` 验证；任何失败均返回非零退出码。若 PATH 中已有另一套 CLI，脚本会停止并给出位置。按脚本提示将 CLI 所在目录加入 PATH；uv 用户也可运行 `uv tool update-shell`，pipx 用户可运行 `pipx ensurepath`，然后重新打开终端。
+
+### GitHub 源码与开发版
+
+Git 安装额外需要 Git。正式 tag 发布后可固定版本：
+
+```sh
+uv tool install 'git+https://github.com/zaidengyifenzhong/YicloudSkill.git@v0.4.0'
+```
+
+跟踪 `main` 的开发版：
+
+```sh
+uv tool install 'git+https://github.com/zaidengyifenzhong/YicloudSkill.git@main'
+```
+
+没有 uv 时可用 `pipx install` 替换 `uv tool install`，或从本地检出的仓库运行：
+
+```sh
+bash install.sh --manager venv --target codex --source 'git+https://github.com/zaidengyifenzhong/YicloudSkill.git@main'
+```
+
+```powershell
+.\install.ps1 -Manager venv -Target codex -Source 'git+https://github.com/zaidengyifenzhong/YicloudSkill.git@main'
+```
+
+`main` 是可变的开发来源，版本号不代表该分支最新提交。`yicloud update` 面向稳定发行版，不追踪分支提交；editable、本地 wheel、任意第三方源码安装需继续使用其原安装流程。
+
+## Quick Start
+
+添加已有云平台账号的本地配置并验证连接：
+
+```sh
 yicloud account add research --auth hmac --host https://gate.yicloud.com.cn
 yicloud account use research
 yicloud account check
-```
-
-`research` 是本地配置别名，供 `account use`、`--account` 和 Python 的 `from_account()` 使用，不能代替平台用户名 `Creator` 或项目标识 `Project`。
-
-网关应与控制台一致：`console.yicloud.com.cn` 使用 `gate.yicloud.com.cn`，`console.yicloud.com` 使用 `gate.yicloud.com`。多账号、Token 和环境变量见[认证说明](src/yicloud/skill/references/access.md)。
-
-然后向 Agent 描述任务。在 Codex 中可以显式调用 `$yicloud`：
-
-> 使用 $yicloud，查看我的项目、可用区和可用 GPU 规格。
-
-> 使用 $yicloud，为当前项目准备一个单卡训练任务，检查数据和输出路径，先执行 dry-run。
-
-## 命令行
-
-查询资源：
-
-```bash
 yicloud project list
 yicloud resources zones
 ```
 
-提交训练并查看日志：
+`account add` 不会注册云平台账号。`research` 是本地别名，不是请求中的 `Creator` 或 `Project`。
 
-```bash
+| 控制台 | API 网关 |
+| --- | --- |
+| `console.yicloud.com.cn` | `https://gate.yicloud.com.cn` |
+| `console.yicloud.com` | `https://gate.yicloud.com` |
+
+Token、服务账号及环境变量见[认证说明](src/yicloud/skill/references/access.md)。在 Codex 中可引用 `$yicloud`，例如“使用 $yicloud，列出当前账号项目和可用 GPU 规格”。创建、停止或删除资源前应确认资源范围。
+
+## Updating
+
+日常更新：
+
+```sh
+yicloud update --check
+yicloud update
+```
+
+- `--check` 只读取远端版本及本地状态，不修改文件；分别返回当前 CLI 版本、最新兼容稳定版本、安装管理器和 Skill 状态。
+- 优先查询 PyPI；仅当 PyPI 项目不存在（HTTP 404）时查询官方 GitHub 最新稳定 Release，并固定其 `vX.Y.Z` tag。网络错误、限流及无兼容版本都会明确失败，不会被当作“已是最新”。
+- 支持当前 uv、pipx 和带 pip 的独立 venv；包括没有 uv 的 `~/.local/share/yicloud-skill/venv/`。检测到的管理器必须指向当前环境。系统 Python、editable、自定义来源、缺失管理器或冲突环境会停止，并说明恢复原安装流程所需条件。
+- 只更新当前安装，不创建第二套 CLI。官方 GitHub 源码安装可迁移到 PyPI 稳定版。版本相同或本地版本更高时跳过包重装，同时修复已有 Skill 的同步状态。
+- 自动发现已有默认 Skill 和登记过的自定义路径；不会新建未选择的 Agent 安装。本地修改及目录冲突会阻止更新，需先备份并移走冲突文件。未变化文件不重复复制。
+- 更新在包外部的临时辅助进程中进行；POSIX 替换原 CLI 进程，Windows 等待原 Python 进程及 `.exe` 启动器退出后更新。Windows 首次返回 `state: started, completed: false`，**不代表更新成功**；按输出路径查看 `result.json` 的 `ok: true`，失败详情见同目录日志。可再次执行 `yicloud --version` 和 `yicloud skill status` 核对。
+- 包安装、CLI 入口、版本和 Skill 校验全部成功后才报告完成。失败可能已改变部分 Python 包，安装器不承诺回滚；使用报告中的原环境命令修复，不要另装一套 CLI。中断后残留锁仅在确认无更新进程运行后手动移除。
+
+`skill status` 是离线检查：`matching` 表示与本地内置 Skill 一致，`remote_checked: false`。远端版本请使用 `update --check`。卸载 Skill 时仅移除受管理且哈希未变的文件：
+
+```sh
+yicloud skill uninstall --target codex
+```
+
+更新不删除或重写账号、认证和 context 配置；自定义 Skill 路径单独存储在账号配置文件旁的 `config.json.skills.json`（文件名随 `YICLOUD_CONFIG` 改变），不含凭据。失败诊断保存在用户私有临时目录，排查结束后可删除。
+
+### 从 0.3.1 迁移
+
+`0.3.1` 没有 `update` 命令，需要一次引导升级。**待 `0.4.0` 正式发布后**，按原安装方式选择一个命令：
+
+```sh
+uv tool install --force --upgrade 'yicloud-skill==0.4.0'
+pipx install --force 'yicloud-skill==0.4.0'
+# 已有独立 venv；无需安装 uv
+"$HOME/.local/share/yicloud-skill/venv/bin/python" -m pip install --upgrade 'yicloud-skill==0.4.0'
+```
+
+Windows 独立 venv：
+
+```powershell
+& "$HOME/.local/share/yicloud-skill/venv/Scripts/python.exe" -m pip install --upgrade 'yicloud-skill==0.4.0'
+```
+
+随后运行 `yicloud update`，已有默认 Skill 会同步；自定义目录先执行 `yicloud skill install --target codex --path 原目录`。无需重建账号或 context。正式发行前需要试用时，可在上述原管理器命令中将包规格替换为官方 GitHub `@main` 开发来源；不要假定尚未发布的 tag 已存在。
+
+## CLI Usage
+
+```sh
+yicloud --help
+yicloud api list --service job
+yicloud api describe job CreateJob
 yicloud job create --file job.json --dry-run
 yicloud job create --file job.json
 yicloud job logs JOB_ID --project PROJECT --zone ZONE --follow
-```
-
-`PROJECT`、`ZONE` 和 `JOB_ID` 需替换为实际值。`job.json` 按下面的请求定义和真实资源配置准备；简单任务可用 `job create --help` 中的快捷参数。`dry-run` 只校验固定 SDK 请求结构，不验证权限、资源余量或运行结果。
-
-查询请求定义、准确命令入口和参数：
-
-```bash
-yicloud api describe job CreateJob
-yicloud api list --service job
-yicloud job create --help
-```
-
-## 开发者工具
-
-可用上下文保存账号、项目和可用区；显式命令参数优先。请求文件和通用 API 不自动补入项目、可用区字段：
-
-```bash
 yicloud context set lab --account research --project PROJECT --zone ZONE
 yicloud context use lab
 yicloud context show
 yicloud doctor local
 ```
 
-`--no-context` 忽略当前上下文，`context show` 可检查认证来源冲突。SSH 首次使用需在平台登记公钥；自动连接默认开启 Agent 转发，可用 `--no-forward-agent` 关闭。等待超时不停止远端任务，SCP 是完整复制。详见 [SSH 指引](src/yicloud/skill/references/workspace/connect.md)、[开发工具](src/yicloud/skill/references/diagnostics/cli.md)和[版本变更](CHANGELOG.md)。
+将占位符替换为实际资源标识。`--dry-run` 仅验证固定 SDK 的本地请求结构，不验证权限、余量或任务是否可运行。显式参数优先于 context；`--no-context` 可忽略当前上下文，请求文件和通用 API 不自动补入项目与可用区。
 
-## Python
+SSH 首次连接前需登记公钥，自动连接默认启用 Agent 转发，可用 `--no-forward-agent` 关闭。见 [SSH 指引](src/yicloud/skill/references/workspace/connect.md)及 [CLI 诊断](src/yicloud/skill/references/diagnostics/cli.md)。
+
+## Python SDK
 
 ```python
 from yicloud import YicloudClient
@@ -108,15 +204,50 @@ with YicloudClient.from_account("research") as client:
     print(result.data)
 ```
 
-## 文档
+SDK 与 CLI 由 `yicloud-skill` 一起分发。`from_account()` 接收本地账号别名，请求参数仍需符合具体 API。依赖 SDK 的应用应通过自己的项目依赖管理流程升级，系统环境和 editable 安装不自动自更新。
 
-- [官方 OpenAPI 文档中心](https://api.yicloud.com.cn/)
-- [完整任务导航](src/yicloud/skill/SKILL.md)：开发机、Job、镜像、存储、Ray 和模型部署
-- [训练运行与产物](src/yicloud/skill/references/jobs/observe.md) · [存储](src/yicloud/skill/references/storage.md) · [镜像查询](src/yicloud/skill/references/images/query.md)
-- [API 说明](src/yicloud/skill/references/diagnostics/api.md)：请求文件、通用调用与错误处理
+## Development
 
-接口目录固定于仪电智算云 Go SDK v0.5.1，不等于控制台的全部路由。网页终端与 WebSocket 日志暂不支持，日志跟随使用轮询。历史联测覆盖 `.com.cn` HMAC、部分查询、macOS SSH/SFTP、临时 CPU 开发机的创建/等待/删除，以及单副本 CPU Job 的创建、运行、日志、跨任务 GPFS 产物校验、停止和删除。GPU/多副本 Job、Ray/Serving 写操作、Token 与服务账号认证尚未联机验证。
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install -e '.[dev]'
+.venv/bin/python -m ruff check src tests tools
+.venv/bin/python -m ruff format --check src tests tools
+.venv/bin/python -m pytest -q
+.venv/bin/python -m build
+.venv/bin/python tools/check_release.py
+```
+
+Windows 使用 `.venv\Scripts\python.exe`。CI 覆盖 Python 3.10、3.11、3.12 与 Linux、macOS、Windows，检查 lint、测试、Skill、wheel/sdist 内容、隔离安装及真实管理器的离线更新交接。`tools/check_updater.py` 用受控版本 fixture 模拟旧安装，不是历史 `0.3.1` 二进制回放；所有写入均限制在临时目录，不需要真实云账号。
+
+## Release Process
+
+版本唯一来源是 `pyproject.toml`。修改版本后执行完整 CI，创建并推送匹配的 `vX.Y.Z` tag 才会触发发布。本次改造不创建 tag、不发布 Release 或 PyPI。
+
+发布工作流复用跨平台 CI，构建并验证 tag、wheel、sdist，通过 PyPI Trusted Publishing 上传同一批产物；仅在 PyPI 成功后创建 GitHub Release 并附加产物，避免发布失败被呈现为完整发布。初次使用需配置 GitHub `pypi` environment 及 PyPI Trusted Publisher；详见 [RELEASING.md](RELEASING.md)。
+
+## Documentation
+
+| 文档 | 内容 |
+| --- | --- |
+| [Skill 任务导航](src/yicloud/skill/SKILL.md) | 开发机、Job、镜像、存储、Ray、模型部署 |
+| [认证配置](src/yicloud/skill/references/access.md) | HMAC、Token、多账号与环境变量 |
+| [训练任务与产物](src/yicloud/skill/references/jobs/observe.md) | 日志和产物 |
+| [存储](src/yicloud/skill/references/storage.md) | 存储资源 |
+| [镜像](src/yicloud/skill/references/images/query.md) | 镜像查询 |
+| [API 与错误处理](src/yicloud/skill/references/diagnostics/api.md) | 通用 API 与排错 |
+| [发布维护](RELEASING.md) | 发布配置、验证和故障处理 |
+
+## Compatibility & Limitations
+
+- API 目录固定于仪电智算云 Go SDK v0.5.1，不覆盖控制台全部路由。原有公开 SDK 接口和业务 CLI 保持兼容。
+- 不支持网页终端及 WebSocket 实时日志；`job logs --follow` 使用轮询。
+- 历史真实联测覆盖 `.com.cn` HMAC、部分资源查询、macOS SSH/SFTP、临时 CPU 开发机创建/等待/删除，以及单副本 CPU Job 创建、运行、日志、跨任务 GPFS 产物验证、停止和删除。
+- GPU、多副本 Job、Ray/Serving 写操作、Token 与服务账号认证尚未完成联机验证。命令存在不代表已验证所有平台行为。
+- 等待超时不会自动停止远端任务；SCP 使用完整文件复制。
+- 更新需要可访问 PyPI 或官方 GitHub、原安装管理器及当前环境写权限；不使用 sudo，不安装缺失的管理器，不处理系统包管理器维护的 Python。
+- Windows 更新异步完成；原生 Windows 行为应以该平台 CI/实测结果为准。开发分支的提交更新由原源码安装流程负责。
 
 ## License
 
-[MIT](LICENSE)。设计参考 InspireSkill，详见[第三方声明](THIRD_PARTY.md)。
+[MIT](LICENSE)。项目设计参考 InspireSkill，详见[第三方声明](THIRD_PARTY.md)。

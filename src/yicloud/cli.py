@@ -10,6 +10,7 @@ from .errors import InputError
 from .commands.api import api
 from .commands.discovery import register_discovery
 from .commands.skills import skill
+from .commands.update import update
 from .commands.workloads import register_workloads
 from .commands.catalog_commands import register_catalog_commands
 
@@ -46,6 +47,7 @@ main.add_command(account)
 main.add_command(context)
 main.add_command(doctor)
 main.add_command(skill)
+main.add_command(update)
 register_discovery(main)
 register_workloads(main)
 register_catalog_commands(main)

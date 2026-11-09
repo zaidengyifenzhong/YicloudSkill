@@ -4,6 +4,8 @@ recursive-include src/yicloud/data *.json
 recursive-include src/yicloud/skill *.md *.yaml
 include src/yicloud/skill/scripts/*.py
 include install.sh install.ps1
+include RELEASING.md
+recursive-include .github/workflows *.yml
 recursive-include tools *.py *.go *.json
 recursive-include tests *.py *.json
 exclude CONTRIBUTING.md CHANGELOG* CHANGES* HISTORY*

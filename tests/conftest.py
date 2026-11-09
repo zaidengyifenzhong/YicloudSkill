@@ -15,6 +15,9 @@ def separated_cli_runner():
 
 @pytest.fixture(autouse=True)
 def isolated_config(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
     monkeypatch.setenv("YICLOUD_CONFIG", str(tmp_path / "config.json"))
     for key in (
         "YICLOUD_AUTHN_TOKEN",

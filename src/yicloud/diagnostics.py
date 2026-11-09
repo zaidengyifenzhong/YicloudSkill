@@ -20,6 +20,9 @@ def check(identifier, status, summary, evidence=None, suggestion=None):
 
 
 def local_checks():
+    from .update import installation
+
+    environment = installation()
     rows = [
         check(
             "cli.package",
@@ -33,6 +36,14 @@ def local_checks():
             },
         )
     ]
+    rows.append(
+        check(
+            "cli.updater",
+            "pass" if environment["manager"] != "unsupported" else "unknown",
+            environment["reason"] or "Installation manager identified",
+            environment,
+        )
+    )
     try:
         read_state()
         rows.append(

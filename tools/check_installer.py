@@ -12,10 +12,12 @@ import sys
 import tempfile
 from pathlib import Path
 
+from installer_test_env import isolated_path
+
 p = argparse.ArgumentParser()
 p.add_argument("wheel", type=Path, help="Wheel file or directory containing one project wheel.")
 p.add_argument("--wheelhouse", type=Path, required=True)
-p.add_argument("--manager", choices=["uv", "pipx"], default="uv")
+p.add_argument("--manager", choices=["uv", "pipx", "venv"], default="uv")
 args = p.parse_args()
 if args.wheel.is_dir():
     wheels = sorted(args.wheel.glob("yicloud_skill-*.whl"))
@@ -27,6 +29,7 @@ with tempfile.TemporaryDirectory(prefix="yicloud-installer-") as directory:
     scratch = Path(directory)
     env = dict(os.environ)
     env.update(
+        PATH=isolated_path(scratch),
         CODEX_HOME=str(scratch / "codex"),
         PYTHONUTF8="1",
         YICLOUD_CONFIG=str(scratch / "config.json"),
@@ -34,6 +37,8 @@ with tempfile.TemporaryDirectory(prefix="yicloud-installer-") as directory:
         UV_TOOL_BIN_DIR=str(scratch / "bin"),
         UV_CACHE_DIR=str(scratch / "cache"),
         UV_OFFLINE="true",
+        HOME=str(scratch),
+        USERPROFILE=str(scratch),
         PIPX_HOME=str(scratch / "pipx"),
         PIPX_MAN_DIR=str(scratch / "man"),
         PIPX_LOG_DIR=str(scratch / "logs"),
@@ -78,6 +83,8 @@ with tempfile.TemporaryDirectory(prefix="yicloud-installer-") as directory:
             "--source",
             str(args.wheel.resolve()),
         ]
+    if args.manager == "venv":
+        command += ["-Venv" if os.name == "nt" else "--venv", str(scratch / "venv")]
     subprocess.run(command, env=env, cwd=scratch, check=True)
     assert (scratch / "codex/skills/yicloud/SKILL.md").is_file()
     assert (scratch / "codex/skills/yicloud/references/diagnostics/api.md").is_file()

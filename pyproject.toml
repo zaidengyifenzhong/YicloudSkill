@@ -4,13 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yicloud-skill"
-version = "0.3.1"
+version = "0.4.0"
 description = "Yicloud API client, CLI and agent skill"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE", "THIRD_PARTY.md", "licenses/*.txt"]
-dependencies = ["click>=8.1,<9", "httpx>=0.27,<1"]
+dependencies = ["click>=8.1,<9", "httpx>=0.27,<1", "packaging>=23"]
+
+[project.urls]
+Repository = "https://github.com/zaidengyifenzhong/YicloudSkill"
+Issues = "https://github.com/zaidengyifenzhong/YicloudSkill/issues"
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<10", "ruff>=0.9", "build>=1.2", "pyyaml>=6"]

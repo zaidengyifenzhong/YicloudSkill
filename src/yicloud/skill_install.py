@@ -91,8 +91,8 @@ def checked_path(root, name, *, require_file=False):
     return dest
 
 
-def install(target, path=None, uninstall=False):
-    destinations = targets(target, path)
+def install(target, path=None, uninstall=False, *, destinations=None, preflight=False):
+    destinations = targets(target, path) if destinations is None else list(destinations)
     previous = {}
     source = Path(str(files("yicloud").joinpath("skill")))
     packaged = packaged_files(source)
@@ -115,6 +115,8 @@ def install(target, path=None, uninstall=False):
                     raise ConfigurationError(
                         f"Unmanaged file conflicts with packaged skill: {dest / name}"
                     )
+    if preflight:
+        return [str(p) for p in destinations]
     for dest in destinations:
         old = previous[dest]
         if uninstall:
@@ -134,6 +136,11 @@ def install(target, path=None, uninstall=False):
                 if not any(dest.iterdir()):
                     dest.rmdir()
             continue
+        if old == packaged and all(
+            (dest / name).is_file() and digest(dest / name) == expected
+            for name, expected in packaged.items()
+        ):
+            continue
         dest.parent.mkdir(parents=True, exist_ok=True)
         stage = Path(tempfile.mkdtemp(prefix=".yicloud-skill-", dir=dest.parent))
         try:
@@ -141,10 +148,11 @@ def install(target, path=None, uninstall=False):
                 shutil.copytree(dest, stage, dirs_exist_ok=True, symlinks=True)
             for name in old.keys() - packaged.keys():
                 (stage / name).unlink(missing_ok=True)
-            for name in packaged:
+            for name, expected in packaged.items():
                 item = stage / name
                 item.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(source / name, item)
+                if not item.is_file() or digest(item) != expected:
+                    shutil.copy2(source / name, item)
             (stage / MARKER).write_text(
                 json.dumps({"owner": OWNER, "files": packaged}), encoding="utf-8"
             )
@@ -210,3 +218,59 @@ def status(target, path=None):
             row[k].sort()
         rows.append(row)
     return {"package_skill_path": str(source), "package_digest": fingerprint, "targets": rows}
+
+
+def registry_path():
+    # Separate from credentials; custom --path installations are discoverable on update.
+    from .config import config_path
+
+    config = config_path()
+    return config.with_name(config.name + ".skills.json")
+
+
+def registered_paths():
+    path = registry_path()
+    if not path.exists():
+        return []
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(value, list) or not all(
+            isinstance(p, str) and Path(p).is_absolute() for p in value
+        ):
+            raise ValueError()
+        return [Path(p) for p in value]
+    except (OSError, ValueError) as e:
+        raise ConfigurationError(f"Invalid skill installation registry: {path}") from e
+
+
+def remember_path(path, uninstall=False):
+    paths = set(registered_paths())
+    path = Path(path).expanduser().absolute()
+    if uninstall:
+        paths.discard(path)
+    else:
+        paths.add(path)
+    registry = registry_path()
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=".skill-installs-", dir=registry.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(sorted(str(p) for p in paths), stream)
+        os.replace(temporary, registry)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+def existing_paths():
+    paths = dict.fromkeys([*targets("all"), *registered_paths()])
+    # An unowned same-name directory is a conflict, never silently adopted.
+    return [p for p in paths if p.exists() or p.is_symlink()]
+
+
+def sync_existing(paths=None):
+    paths = existing_paths() if paths is None else [Path(p) for p in paths]
+    install("all", destinations=paths)
+    rows = [status("codex", p)["targets"][0] for p in paths]
+    if any(row["state"] != "matching" for row in rows):
+        raise ConfigurationError("Skill synchronization verification failed; run skill status")
+    return rows

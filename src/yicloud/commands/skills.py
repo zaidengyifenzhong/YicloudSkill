@@ -5,7 +5,7 @@ from pathlib import Path
 import click
 
 from ..cli_support import emit
-from ..skill_install import install
+from ..skill_install import install, registered_paths, remember_path
 
 
 @click.group()
@@ -25,10 +25,15 @@ def skill_command(uninstall):
     )
     @click.pass_context
     def command(ctx, target, path):
+        if path is not None:
+            registered_paths()  # Fail before changing files if the registry needs repair.
+        paths = install(target, path, uninstall)
+        if path is not None:
+            remember_path(path, uninstall)
         emit(
             ctx,
             {
-                "paths": install(target, path, uninstall),
+                "paths": paths,
                 "action": "uninstall" if uninstall else "install",
             },
         )
@@ -58,6 +63,8 @@ def skill_status(ctx, target, path):
         dict(
             status(target, path),
             version=version("yicloud-skill"),
+            remote_checked=False,
+            latest_version=None,
             python=sys.executable,
             cli_entrypoint=sys.argv[0],
             command_on_path=shutil.which("yicloud"),
