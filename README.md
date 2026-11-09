@@ -18,21 +18,23 @@ Agent Skill 提供操作流程与参数指引；CLI 和 Python SDK 负责调用 
 
 要求 Python 3.10+。uv 和 pipx 是可选安装管理器，普通用户安装不需要 root 或开发依赖。**选择一种安装方式**，避免多套 `yicloud` 争用 PATH。
 
-### 稳定版
+### 当前安装方式：GitHub 源码
 
-正式稳定版以 PyPI 为优先分发渠道。以下命令适用于维护者完成首次 PyPI 发布之后；本次仓库重构本身不代表 `0.4.0` 已发布。若 PyPI 尚无此项目，请使用下面明确标注的 GitHub 开发版安装方式。
+当前代码已推送到 GitHub `main`，**尚未发布 PyPI 包，也未创建 `v0.4.0` tag 或 GitHub Release**。目前请从 GitHub 安装，不要运行 `uv tool install yicloud-skill` 或 `pipx install yicloud-skill`。
 
-Linux、macOS、Windows（PowerShell）均可使用：
+安装额外需要 Git。Linux、macOS、Windows（PowerShell）均可使用以下一种方式：
 
 ```sh
-uv tool install yicloud-skill
+uv tool install 'git+https://github.com/zaidengyifenzhong/YicloudSkill.git@main'
 ```
 
 或：
 
 ```sh
-pipx install yicloud-skill
+pipx install 'git+https://github.com/zaidengyifenzhong/YicloudSkill.git@main'
 ```
+
+`main` 是可变的开发来源，包版本号不代表该分支最新提交。正式稳定版发布后将优先通过 PyPI 分发；发布流程见 [RELEASING.md](RELEASING.md)。
 
 选择 Agent 并验证安装：
 
@@ -64,47 +66,21 @@ cd YicloudSkill
 Linux / macOS：
 
 ```sh
-bash install.sh --target codex
+bash install.sh --target codex --source 'git+https://github.com/zaidengyifenzhong/YicloudSkill.git@main'
 # 没有 uv/pipx 时，使用 Python 自带的 venv 和 pip
-bash install.sh --manager venv --target codex
+bash install.sh --manager venv --target codex --source 'git+https://github.com/zaidengyifenzhong/YicloudSkill.git@main'
 ```
 
 Windows PowerShell：
 
 ```powershell
-.\install.ps1 -Target codex
-.\install.ps1 -Manager venv -Target codex
-```
-
-脚本默认安装 PyPI 稳定版；`auto` 优先复用 `~/.local/share/yicloud-skill/venv`，否则选择已有 uv、pipx，均不存在时创建上述独立 venv。POSIX 需要 `python3`，Windows 需要 PATH 中的 `python`；部分 Linux 发行版需先通过系统包管理器提供 Python venv 支持。脚本不会修改其他 Python 环境。可用 `--venv PATH` / `-Venv PATH` 指定独立环境，`--target none` / `-Target none` 只安装 CLI。
-
-脚本会执行 CLI、Skill 和 `doctor local` 验证；任何失败均返回非零退出码。若 PATH 中已有另一套 CLI，脚本会停止并给出位置。按脚本提示将 CLI 所在目录加入 PATH；uv 用户也可运行 `uv tool update-shell`，pipx 用户可运行 `pipx ensurepath`，然后重新打开终端。
-
-### GitHub 源码与开发版
-
-Git 安装额外需要 Git。正式 tag 发布后可固定版本：
-
-```sh
-uv tool install 'git+https://github.com/zaidengyifenzhong/YicloudSkill.git@v0.4.0'
-```
-
-跟踪 `main` 的开发版：
-
-```sh
-uv tool install 'git+https://github.com/zaidengyifenzhong/YicloudSkill.git@main'
-```
-
-没有 uv 时可用 `pipx install` 替换 `uv tool install`，或从本地检出的仓库运行：
-
-```sh
-bash install.sh --manager venv --target codex --source 'git+https://github.com/zaidengyifenzhong/YicloudSkill.git@main'
-```
-
-```powershell
+.\install.ps1 -Target codex -Source 'git+https://github.com/zaidengyifenzhong/YicloudSkill.git@main'
 .\install.ps1 -Manager venv -Target codex -Source 'git+https://github.com/zaidengyifenzhong/YicloudSkill.git@main'
 ```
 
-`main` 是可变的开发来源，版本号不代表该分支最新提交。`yicloud update` 面向稳定发行版，不追踪分支提交；editable、本地 wheel、任意第三方源码安装需继续使用其原安装流程。
+脚本未指定来源时默认请求 PyPI；首次稳定版发布前必须像上面一样显式指定 GitHub 来源。`auto` 优先复用 `~/.local/share/yicloud-skill/venv`，否则选择已有 uv、pipx，均不存在时创建上述独立 venv。POSIX 需要 `python3`，Windows 需要 PATH 中的 `python`；部分 Linux 发行版需先通过系统包管理器提供 Python venv 支持。脚本不会修改其他 Python 环境。可用 `--venv PATH` / `-Venv PATH` 指定独立环境，`--target none` / `-Target none` 只安装 CLI。
+
+脚本会执行 CLI、Skill 和 `doctor local` 验证；任何失败均返回非零退出码。若 PATH 中已有另一套 CLI，脚本会停止并给出位置。按脚本提示将 CLI 所在目录加入 PATH；uv 用户也可运行 `uv tool update-shell`，pipx 用户可运行 `pipx ensurepath`，然后重新打开终端。
 
 ## Quick Start
 
@@ -129,7 +105,37 @@ Token、服务账号及环境变量见[认证说明](src/yicloud/skill/reference
 
 ## Updating
 
-日常更新：
+### 当前源码安装的更新
+
+首次稳定版尚未发布，`yicloud update --check` 和 `yicloud update` 目前会因找不到远端稳定发行版而报错，不会更新 `main`。当前请按原安装方式更新，**只选择与现有安装对应的一种命令**：
+
+```sh
+# uv
+uv tool install --force --upgrade 'git+https://github.com/zaidengyifenzhong/YicloudSkill.git@main'
+# pipx：按其记录的原 GitHub 来源重新安装
+pipx reinstall yicloud-skill
+# 已有独立 venv；无需安装 uv，强制重装以获取相同包版本下的新提交
+"$HOME/.local/share/yicloud-skill/venv/bin/python" -m pip install --upgrade --force-reinstall 'git+https://github.com/zaidengyifenzhong/YicloudSkill.git@main'
+```
+
+Windows 独立 venv：
+
+```powershell
+& "$HOME/.local/share/yicloud-skill/venv/Scripts/python.exe" -m pip install --upgrade --force-reinstall 'git+https://github.com/zaidengyifenzhong/YicloudSkill.git@main'
+```
+
+随后同步已经选择的 Agent。例如已有 Codex Skill：
+
+```sh
+yicloud skill install --target codex
+yicloud skill status --target codex
+```
+
+Claude Code 使用 `--target claude`，两者均已安装时可用 `--target all`；自定义目录需补充原来的 `--path`。这些命令不会重建账号或 context。
+
+### 首次稳定版发布后的统一更新
+
+正式发布到 PyPI 或官方 GitHub Release 后，日常更新使用：
 
 ```sh
 yicloud update --check
@@ -154,22 +160,9 @@ yicloud skill uninstall --target codex
 
 ### 从 0.3.1 迁移
 
-`0.3.1` 没有 `update` 命令，需要一次引导升级。**待 `0.4.0` 正式发布后**，按原安装方式选择一个命令：
+`0.3.1` 没有 `update` 命令。当前按上面的“当前源码安装的更新”执行一次原环境引导升级，再同步已有 Skill 即可；无需安装 uv 或迁移账号配置。
 
-```sh
-uv tool install --force --upgrade 'yicloud-skill==0.4.0'
-pipx install --force 'yicloud-skill==0.4.0'
-# 已有独立 venv；无需安装 uv
-"$HOME/.local/share/yicloud-skill/venv/bin/python" -m pip install --upgrade 'yicloud-skill==0.4.0'
-```
-
-Windows 独立 venv：
-
-```powershell
-& "$HOME/.local/share/yicloud-skill/venv/Scripts/python.exe" -m pip install --upgrade 'yicloud-skill==0.4.0'
-```
-
-随后运行 `yicloud update`，已有默认 Skill 会同步；自定义目录先执行 `yicloud skill install --target codex --path 原目录`。无需重建账号或 context。正式发行前需要试用时，可在上述原管理器命令中将包规格替换为官方 GitHub `@main` 开发来源；不要假定尚未发布的 tag 已存在。
+未来 `0.4.0` 正式发布后，也可将对应原管理器命令的 GitHub 来源换成 `yicloud-skill==0.4.0`，然后运行 `yicloud update` 同步已有默认 Skill。自定义目录先执行一次带原 `--path` 的 `skill install`，以登记后续自动同步路径。尚未发布的版本与 tag 不能作为安装来源。
 
 ## CLI Usage
 
