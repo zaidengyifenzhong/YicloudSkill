@@ -66,7 +66,9 @@ def local_checks():
                 {"path": path, "optional": tool == "rsync"},
             )
         )
-    for target in ("codex", "claude"):
+    from .agents import detected_agents
+
+    for target in dict.fromkeys(["codex", "claude", *(row["name"] for row in detected_agents())]):
         try:
             result = skill_status(target)["targets"][0]
             state = (

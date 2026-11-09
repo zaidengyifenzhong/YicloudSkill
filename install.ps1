@@ -2,8 +2,8 @@
 [CmdletBinding()]
 param(
     [ValidateSet('auto','uv','pipx','venv')][string]$Manager = 'auto',
-    [ValidateSet('codex','claude','all','none')][string]$Target = 'all',
-    [string]$Source = 'yicloud-skill',
+    [ValidatePattern('^[a-z][a-z0-9-]*$')][string]$Target = 'auto',
+    [string]$Source = 'git+https://github.com/zaidengyifenzhong/YicloudSkill.git@main',
     [string]$Venv = (Join-Path $HOME '.local/share/yicloud-skill/venv')
 )
 $ErrorActionPreference = 'Stop'
@@ -33,7 +33,7 @@ if ($Existing -and ([IO.Path]::GetFullPath($Existing.Source) -ne [IO.Path]::GetF
     throw "Another yicloud is on PATH at $($Existing.Source). Use its yicloud update or select its original manager/environment; no second CLI installed."
 }
 if ($Manager -eq 'uv') {
-    & uv tool install --upgrade --force $Source
+    & uv tool install --upgrade --force --reinstall $Source
     Assert-Native 'CLI installation failed'
 } elseif ($Manager -eq 'pipx') {
     & pipx install --force $Source
@@ -47,7 +47,7 @@ if ($Manager -eq 'uv') {
     }
     if (-not (Test-Path (Join-Path $Venv 'pyvenv.cfg'))) { throw "Not a standalone venv: $Venv" }
     $Python = Join-Path $Venv 'Scripts/python.exe'
-    & $Python -I -m pip install --upgrade $Source
+    & $Python -I -m pip install --upgrade --force-reinstall $Source
     Assert-Native 'CLI installation failed'
 }
 & $Cli --version

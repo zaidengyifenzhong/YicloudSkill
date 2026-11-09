@@ -12,7 +12,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from installer_test_env import isolated_path
+from installer_test_env import isolated_agent_env, isolated_path
 
 p = argparse.ArgumentParser()
 p.add_argument("wheel", type=Path, help="Wheel file or directory containing one project wheel.")
@@ -28,6 +28,7 @@ repo = Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory(prefix="yicloud-installer-") as directory:
     scratch = Path(directory)
     env = dict(os.environ)
+    env.update(isolated_agent_env(scratch))
     env.update(
         PATH=isolated_path(scratch),
         CODEX_HOME=str(scratch / "codex"),
@@ -56,6 +57,8 @@ with tempfile.TemporaryDirectory(prefix="yicloud-installer-") as directory:
         encoding="utf-8",
     )
     env["UV_CONFIG_FILE"] = str(config)
+    (scratch / "codex").mkdir()
+    (scratch / ".cursor").mkdir()
     if os.name == "nt":
         shell = shutil.which("pwsh")
         if not shell:
@@ -68,7 +71,7 @@ with tempfile.TemporaryDirectory(prefix="yicloud-installer-") as directory:
             "-Manager",
             args.manager,
             "-Target",
-            "codex",
+            "auto",
             "-Source",
             str(args.wheel.resolve()),
         ]
@@ -79,7 +82,7 @@ with tempfile.TemporaryDirectory(prefix="yicloud-installer-") as directory:
             "--manager",
             args.manager,
             "--target",
-            "codex",
+            "auto",
             "--source",
             str(args.wheel.resolve()),
         ]
@@ -87,6 +90,8 @@ with tempfile.TemporaryDirectory(prefix="yicloud-installer-") as directory:
         command += ["-Venv" if os.name == "nt" else "--venv", str(scratch / "venv")]
     subprocess.run(command, env=env, cwd=scratch, check=True)
     assert (scratch / "codex/skills/yicloud/SKILL.md").is_file()
+    assert (scratch / ".cursor/skills/yicloud/SKILL.md").is_file()
+    assert not (scratch / ".claude").exists()
     assert (scratch / "codex/skills/yicloud/references/diagnostics/api.md").is_file()
     assert not (scratch / "config.json").exists()
-print(f"{args.manager} installer and Codex skill verified in isolated directories")
+print(f"{args.manager} installer and detected Codex/Cursor skills verified in isolated directories")

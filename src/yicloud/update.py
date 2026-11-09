@@ -1,4 +1,4 @@
-"""Stable release discovery and conservative, environment-bound update planning."""
+"""GitHub source discovery and conservative, environment-bound update planning."""
 
 import json
 import os
@@ -16,6 +16,11 @@ import httpx
 from packaging.specifiers import SpecifierSet
 from packaging.version import InvalidVersion, Version
 
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10
+    import tomli as tomllib
+
 from .errors import ConfigurationError, NetworkError
 from .skill_install import existing_paths, install, status, sync_existing
 
@@ -24,54 +29,49 @@ REPOSITORY = "https://github.com/zaidengyifenzhong/YicloudSkill"
 STABLE = re.compile(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\Z")
 
 
-def latest_release():
-    """PyPI first; only a missing project falls back to official GitHub Releases."""
+def latest_source():
+    """Resolve main once, then read metadata and install from that immutable commit."""
     try:
         with httpx.Client(timeout=15, follow_redirects=False, trust_env=True) as client:
-            response = client.get(f"https://pypi.org/pypi/{PACKAGE}/json")
-            if response.status_code == 404:
-                response = client.get(
-                    "https://api.github.com/repos/zaidengyifenzhong/YicloudSkill/releases/latest",
-                    headers={"Accept": "application/vnd.github+json"},
-                )
-                response.raise_for_status()
-                release = response.json()
-                tag = release["tag_name"]
-                if (
-                    release.get("draft")
-                    or release.get("prerelease")
-                    or not tag.startswith("v")
-                    or not STABLE.fullmatch(tag[1:])
-                ):
-                    raise ValueError("Invalid stable release tag")
-                return {
-                    "version": tag[1:],
-                    "channel": "github",
-                    "spec": f"git+{REPOSITORY}.git@{tag}",
-                }
+            response = client.get(
+                "https://api.github.com/repos/zaidengyifenzhong/YicloudSkill/commits/main",
+                headers={"Accept": "application/vnd.github+json"},
+            )
             response.raise_for_status()
-            releases = response.json()["releases"]
-            compatible = []
-            for number, artifacts in releases.items():
-                if not STABLE.fullmatch(number):
-                    continue
-                if any(
-                    not item.get("yanked", False)
-                    and item.get("packagetype") in {"sdist", "bdist_wheel"}
-                    and Version(".".join(map(str, sys.version_info[:3])))
-                    in SpecifierSet(item.get("requires_python") or "")
-                    for item in artifacts
-                ):
-                    compatible.append(Version(number))
-            if not compatible:
-                raise ValueError("No compatible stable distribution")
-            number = str(max(compatible))
-            return {"version": number, "channel": "pypi", "spec": f"{PACKAGE}=={number}"}
+            commit = response.json()["sha"]
+            if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40}", commit):
+                raise ValueError("Invalid GitHub commit")
+            response = client.get(
+                "https://raw.githubusercontent.com/zaidengyifenzhong/YicloudSkill/"
+                + commit
+                + "/pyproject.toml"
+            )
+            response.raise_for_status()
+            project = tomllib.loads(response.text)["project"]
+            number = project["version"]
+            if project["name"] != PACKAGE or not STABLE.fullmatch(number):
+                raise ValueError("Invalid project identity/version")
+            requirement = project["requires-python"]
+            supported = Version(".".join(map(str, sys.version_info[:3]))) in SpecifierSet(
+                requirement
+            )
+            if not supported:
+                raise ConfigurationError(
+                    f"GitHub main requires Python {requirement}; this environment uses "
+                    f"{sys.version_info.major}.{sys.version_info.minor}. "
+                    "Upgrade the original environment's Python before updating. No changes made."
+                )
+            return {
+                "version": number,
+                "commit": commit,
+                "channel": "github-main",
+                "spec": f"git+{REPOSITORY}.git@{commit}",
+            }
     except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError) as e:
-        # Do not echo response bodies, proxy credentials or unrelated environment values.
+        # Never echo response bodies or proxy credentials.
         raise NetworkError(
-            "Cannot determine a compatible stable release from PyPI/GitHub; "
-            "check network access and published releases, then retry. No changes made."
+            "Cannot check GitHub main; check network access, GitHub rate limits and "
+            "repository metadata, then retry. No changes made."
         ) from e
 
 
@@ -99,6 +99,7 @@ def installation():
         "prefix": str(prefix),
         "manager": "unsupported",
         "reason": None,
+        "commit": None,
     }
     try:
         direct = json.loads(dist.read_text("direct_url.json") or "{}")
@@ -117,14 +118,18 @@ def installation():
                 ]
             return result
         url = direct.get("url")
-        if url and not (
+        if not url or not (
             url.rstrip("/") in {REPOSITORY, REPOSITORY + ".git"}
             and direct.get("vcs_info", {}).get("vcs") == "git"
         ):
             result["reason"] = (
-                "Local/archive/custom source: use the original installer with the intended source."
+                "Unknown/local/archive/custom source: use the original installer with the intended source."
             )
             return result
+        commit = direct["vcs_info"].get("commit_id")
+        if commit is not None and not re.fullmatch(r"[0-9a-f]{40}", commit):
+            raise ValueError("Invalid installed commit metadata")
+        result["commit"] = commit
         if prefix == Path(sys.base_prefix).absolute() or not Path(
             dist.locate_file("")
         ).resolve().is_relative_to(prefix.resolve()):
@@ -193,29 +198,44 @@ def update_command(environment, release):
     spec = release["spec"]
     manager = environment["manager"]
     if manager == "uv":
-        # Explicit source replaces legacy Git/main requirements; verified tool root above.
+        # Pin the resolved commit; tool root was verified above.
         return [
             environment["executable"],
             "tool",
             "install",
             "--force",
             "--upgrade",
+            "--reinstall",
             "--python",
             str(Path(sys._base_executable)),
             spec,
         ]
     if manager == "pipx":
+        # pipx --force maps to the recorded backend's reinstall flag itself.
         return [environment["executable"], "install", "--force", spec]
     if manager == "venv":
-        return [environment["python"], "-I", "-m", "pip", "install", "--upgrade", spec]
+        return [
+            environment["python"],
+            "-I",
+            "-m",
+            "pip",
+            "install",
+            "--upgrade",
+            "--force-reinstall",
+            spec,
+        ]
     return None
 
 
 def inspect_update():
     environment = installation()
-    release = latest_release()
+    release = latest_source()
     try:
-        available = Version(release["version"]) > Version(environment["version"])
+        local_version = Version(environment["version"])
+        remote_version = Version(release["version"])
+        available = remote_version > local_version or (
+            remote_version == local_version and release["commit"] != environment["commit"]
+        )
     except InvalidVersion as e:
         raise ConfigurationError("Installed package has invalid version metadata") from e
     paths = existing_paths()
@@ -235,6 +255,8 @@ def inspect_update():
     return dict(
         current_version=environment["version"],
         latest_version=release["version"],
+        current_commit=environment["commit"],
+        latest_commit=release["commit"],
         update_available=available,
         channel=release["channel"],
         installation=environment,
@@ -254,6 +276,10 @@ def prepare_update(report):
                 report.get("manual_command")
                 or "The original installer cannot be identified safely; no update command was guessed.",
             ],
+        )
+    if report["command"][-1].startswith("git+") and not shutil.which("git"):
+        raise ConfigurationError(
+            "Git is required for GitHub updates. Install Git and retry; no changes made."
         )
     paths = [Path(row["path"]) for row in report["skills"]]
     install("all", destinations=paths, preflight=True)
@@ -282,6 +308,7 @@ def prepare_update(report):
             "python": report["installation"]["python"],
             "prefix": report["installation"]["prefix"],
             "version": report["latest_version"],
+            "commit": report["latest_commit"],
             "paths": [str(p) for p in paths],
             "lock": str(lock),
             "json": False,

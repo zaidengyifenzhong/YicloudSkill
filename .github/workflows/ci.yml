@@ -36,7 +36,7 @@ jobs:
           assert len(wheels) == 1, wheels
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
               env.write(f"YICLOUD_WHEEL={wheels[0].as_posix()}\n")
-      - run: python -m pip download --dest wheelhouse "${{ env.YICLOUD_WHEEL }}"
+      - run: python -m pip download --dest wheelhouse "${{ env.YICLOUD_WHEEL }}" "setuptools>=77" pip
       - run: python tools/verify_wheel.py dist --wheelhouse wheelhouse
       - name: Prepare installer managers
         if: matrix.python == '3.12'
@@ -53,6 +53,11 @@ jobs:
       - name: Verify update handoff with all managers
         if: matrix.python == '3.12'
         run: python tools/check_updater.py dist --wheelhouse wheelhouse
+      - name: Verify pipx pip backend update
+        if: matrix.python == '3.12'
+        env:
+          PIPX_DEFAULT_BACKEND: pip
+        run: python tools/check_updater.py dist --wheelhouse wheelhouse --manager pipx
       - name: Installer syntax (Bash)
         if: runner.os != 'Windows'
         run: bash -n install.sh

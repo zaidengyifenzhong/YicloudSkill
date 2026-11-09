@@ -13,15 +13,21 @@ OWNER = "YicloudSkill/skill/v1"
 
 
 def targets(target, path=None):
+    from .agents import ALIASES, detected_agents, inventory
+
     if path:
-        if target == "all":
+        if target in {"all", "auto"}:
             raise ConfigurationError("Explicit --path requires one target")
-        return [Path(path).expanduser()]
-    roots = {
-        "codex": Path(os.getenv("CODEX_HOME", str(Path.home() / ".codex"))) / "skills/yicloud",
-        "claude": Path.home() / ".claude/skills/yicloud",
-    }
-    return list(roots.values()) if target == "all" else [roots[target]]
+        return [Path(path).expanduser().absolute()]
+    if target in {"all", "auto"}:
+        return list(dict.fromkeys(Path(row["path"]) for row in detected_agents()))
+    target = ALIASES.get(target, target)
+    for row in inventory():
+        if row["name"] == target:
+            return [Path(row["path"])]
+    raise ConfigurationError(
+        "Unknown agent target; use skill agents or --target custom --path PATH"
+    )
 
 
 def manifest(path):
@@ -262,7 +268,9 @@ def remember_path(path, uninstall=False):
 
 
 def existing_paths():
-    paths = dict.fromkeys([*targets("all"), *registered_paths()])
+    from .agents import candidate_paths
+
+    paths = dict.fromkeys([*candidate_paths(), *registered_paths()])
     # An unowned same-name directory is a conflict, never silently adopted.
     return [p for p in paths if p.exists() or p.is_symlink()]
 

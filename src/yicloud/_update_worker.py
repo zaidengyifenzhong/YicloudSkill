@@ -13,14 +13,17 @@ from pathlib import Path
 
 VERIFY = """
 import json, sys
-from importlib.metadata import version
+from importlib.metadata import version, distribution
 from pathlib import Path
 from yicloud.skill_install import sync_existing
 plan = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 assert Path(sys.prefix).resolve() == Path(plan["prefix"]).resolve(), "Environment changed"
-assert version("yicloud-skill") == plan["version"], "Installed version differs from release"
+assert version("yicloud-skill") == plan["version"], "Installed version differs from GitHub metadata"
+if plan.get("commit"):
+    direct = json.loads(distribution("yicloud-skill").read_text("direct_url.json") or "{}")
+    assert direct.get("vcs_info", {}).get("commit_id") == plan["commit"], "Installed commit differs from GitHub commit"
 rows = sync_existing(plan["paths"])
-print(json.dumps({"version": version("yicloud-skill"), "skills": rows}))
+print(json.dumps({"version": version("yicloud-skill"), "commit": plan.get("commit"), "skills": rows}))
 """
 
 
@@ -141,7 +144,10 @@ def main(plan_path):
         if plan.get("manual_command"):
             print("Repair command: " + plan["manual_command"], file=sys.stderr)
     else:
-        print(f"Updated yicloud to {result['data']['version']}; existing Skills verified.")
+        commit = result["data"].get("commit") or ""
+        print(
+            f"Updated yicloud to {result['data']['version']} ({commit[:12]}); existing Skills verified."
+        )
     if code == 0 and not plan.get("wait_pid"):
         shutil.rmtree(plan_path.parent)
     return code

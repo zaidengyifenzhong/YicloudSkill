@@ -31,7 +31,11 @@ def agent_roots(tmp_path, monkeypatch):
 
 
 def response(data, code=200):
-    return httpx.Response(code, json=data, request=httpx.Request("GET", "https://pypi.org/"))
+    return httpx.Response(
+        code,
+        **({"text": data} if isinstance(data, str) else {"json": data}),
+        request=httpx.Request("GET", "https://api.github.com/"),
+    )
 
 
 def remote(monkeypatch, responses):
@@ -39,46 +43,61 @@ def remote(monkeypatch, responses):
     monkeypatch.setattr(httpx.Client, "get", lambda *a, **kw: next(iterator))
 
 
-def release(version="0.4.0"):
-    return {"version": version, "channel": "pypi", "spec": f"yicloud-skill=={version}"}
+def release(version="0.4.0", commit="b" * 40):
+    return {
+        "version": version,
+        "commit": commit,
+        "channel": "github-main",
+        "spec": f"git+{updater.REPOSITORY}.git@{commit}",
+    }
 
 
-def test_release_filters_prereleases_yanks_and_python(monkeypatch):
-    remote(
-        monkeypatch,
-        [
-            response(
-                {
-                    "releases": {
-                        "0.4.0": [{"packagetype": "bdist_wheel", "requires_python": ">=3.10"}],
-                        "0.5.0": [{"packagetype": "sdist", "yanked": True}],
-                        "0.6.0rc1": [{"packagetype": "sdist"}],
-                        "0.7.0": [{"packagetype": "sdist", "requires_python": ">=99"}],
-                    }
-                }
-            )
-        ],
-    )
-    assert updater.latest_release() == release()
+def project_text(version="0.4.0", python=">=3.10", name="yicloud-skill"):
+    return f'[project]\nname = "{name}"\nversion = "{version}"\nrequires-python = "{python}"\n'
 
 
-def test_release_fallback_official_tag(monkeypatch):
-    remote(monkeypatch, [response({}, 404), response({"tag_name": "v0.4.0"})])
-    assert updater.latest_release()["spec"].endswith(".git@v0.4.0")
+def test_source_pins_commit_and_reads_its_metadata(monkeypatch):
+    calls = []
+    replies = iter([response({"sha": "b" * 40}), response(project_text())])
+
+    def get(client, url, **kwargs):
+        calls.append(url)
+        return next(replies)
+
+    monkeypatch.setattr(httpx.Client, "get", get)
+    assert updater.latest_source() == release()
+    assert calls[0].endswith("/commits/main")
+    assert calls[1].endswith("/" + "b" * 40 + "/pyproject.toml")
+    assert all("pypi" not in url and "releases" not in url for url in calls)
 
 
-@pytest.mark.parametrize("tag", ["main", "v1.2.3rc1", "v1.2.3;echo x", "v01.2.3"])
-def test_invalid_github_release_rejected(monkeypatch, tag):
-    remote(monkeypatch, [response({}, 404), response({"tag_name": tag})])
+@pytest.mark.parametrize("commit", ["main", "b" * 39, "B" * 40, "$(echo bad)", None])
+def test_invalid_github_commit_rejected(monkeypatch, commit):
+    remote(monkeypatch, [response({"sha": commit})])
     with pytest.raises(NetworkError):
-        updater.latest_release()
+        updater.latest_source()
+
+
+@pytest.mark.parametrize(
+    "text", [project_text(name="other"), project_text(version="1.2.3rc1"), "not toml", "[project]"]
+)
+def test_invalid_remote_metadata_rejected(monkeypatch, text):
+    remote(monkeypatch, [response({"sha": "b" * 40}), response(text)])
+    with pytest.raises(NetworkError):
+        updater.latest_source()
+
+
+def test_incompatible_python_is_clear_before_install(monkeypatch):
+    remote(monkeypatch, [response({"sha": "b" * 40}), response(project_text(python=">=99"))])
+    with pytest.raises(ConfigurationError, match="requires Python >=99"):
+        updater.latest_source()
 
 
 @pytest.mark.parametrize("code", [403, 429, 500])
 def test_network_failure_no_fallback_or_changes(monkeypatch, tmp_path, code):
     remote(monkeypatch, [response({}, code)])
     with pytest.raises(NetworkError, match="No changes made"):
-        updater.latest_release()
+        updater.latest_source()
     assert not (tmp_path / "codex").exists()
 
 
@@ -100,7 +119,7 @@ def environment(tmp_path, monkeypatch):
     monkeypatch.setattr(updater.sys, "prefix", str(prefix))
     monkeypatch.setattr(updater.sys, "base_prefix", str(tmp_path / "base"))
     monkeypatch.setattr(updater.sys, "executable", str(prefix / "bin/python"))
-    direct = {}
+    direct = {"url": updater.REPOSITORY + ".git", "vcs_info": {"vcs": "git", "commit_id": "a" * 40}}
     dist = SimpleNamespace(
         version="0.3.1",
         read_text=lambda _: json.dumps(direct),
@@ -123,7 +142,8 @@ def test_legacy_venv_without_uv(environment, monkeypatch):
         "pip",
         "install",
         "--upgrade",
-        "yicloud-skill==0.4.0",
+        "--force-reinstall",
+        release()["spec"],
     ]
 
 
@@ -143,7 +163,14 @@ def test_manager_detection_and_exact_environment(environment, monkeypatch, manag
         updater,
         "distribution",
         lambda _: SimpleNamespace(
-            version="0.3.1", read_text=lambda _: None, locate_file=lambda _: real / "lib"
+            version="0.3.1",
+            read_text=lambda _: json.dumps(
+                {
+                    "url": updater.REPOSITORY + ".git",
+                    "vcs_info": {"vcs": "git", "commit_id": "a" * 40},
+                }
+            ),
+            locate_file=lambda _: real / "lib",
         ),
     )
     monkeypatch.setattr(updater.shutil, "which", lambda _: "/tools/" + manager)
@@ -187,8 +214,8 @@ def test_no_pip_or_bad_metadata(environment, monkeypatch):
     assert updater.installation()["manager"] == "unsupported"
 
 
-def report_fixture(environment, monkeypatch, latest="0.4.0"):
-    monkeypatch.setattr(updater, "latest_release", lambda: release(latest))
+def report_fixture(environment, monkeypatch, latest="0.4.0", commit="b" * 40):
+    monkeypatch.setattr(updater, "latest_source", lambda: release(latest, commit))
     return updater.inspect_update()
 
 
@@ -204,7 +231,7 @@ def test_check_is_read_only_and_detects_update(environment, monkeypatch, tmp_pat
 
 @pytest.mark.parametrize("latest", ["0.3.1", "0.2.0"])
 def test_same_or_newer_version_no_reinstall(environment, monkeypatch, latest):
-    report = report_fixture(environment, monkeypatch, latest)
+    report = report_fixture(environment, monkeypatch, latest, "a" * 40)
     monkeypatch.setattr(updater, "handoff", lambda *a: pytest.fail("unnecessary reinstall"))
     assert updater.apply_update(report)["state"] == "current"
 
@@ -214,7 +241,7 @@ def test_same_version_repairs_existing_skill_only(environment, monkeypatch, tmp_
     install("codex", dest)
     remember_path(dest)
     (dest / "SKILL.md").unlink()
-    report = report_fixture(environment, monkeypatch, "0.3.1")
+    report = report_fixture(environment, monkeypatch, "0.3.1", "a" * 40)
     assert updater.apply_update(report)["skills"][0]["state"] == "matching"
     assert not (tmp_path / ".claude").exists()
 
@@ -447,3 +474,36 @@ def test_malformed_install_metadata_returns_explanation(environment, monkeypatch
     result = updater.installation()
     assert result["manager"] == "unsupported"
     assert "Invalid installation metadata" in result["reason"]
+
+
+def test_same_version_new_commit_requires_update(environment, monkeypatch):
+    report = report_fixture(environment, monkeypatch, "0.3.1")
+    assert report["update_available"]
+    assert report["current_commit"] == "a" * 40
+    assert report["latest_commit"] == "b" * 40
+    assert report["command"][-1].endswith("@" + "b" * 40)
+
+
+def test_no_source_provenance_is_not_guessed(environment):
+    environment[1].clear()
+    assert updater.installation()["manager"] == "unsupported"
+
+
+def test_newer_local_version_never_downgraded(environment, monkeypatch):
+    assert not report_fixture(environment, monkeypatch, "0.2.0")["update_available"]
+
+
+def test_release_workflow_uses_github_without_publishing_service():
+    import yaml
+
+    workflow = yaml.safe_load(
+        (Path(__file__).resolve().parents[1] / ".github/workflows/release.yml").read_text()
+    )
+    assert set(workflow["jobs"]) == {"tests", "build", "github-release"}
+    assert workflow["jobs"]["github-release"]["needs"] == "build"
+    assert "id-token" not in str(workflow)
+
+
+def test_pipx_does_not_duplicate_backend_reinstall_flags():
+    command = updater.update_command({"manager": "pipx", "executable": "pipx"}, release())
+    assert command == ["pipx", "install", "--force", release()["spec"]]

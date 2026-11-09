@@ -26,7 +26,7 @@
 
 ## 同步 Skill
 
-CLI 更新后运行 `skill install --target all` 同步受管理安装。status 的 matching 表示文件匹配；different 可能是旧包，local_edits/conflict 需要保留用户修改，不能强行覆盖。安装器负责移除旧版受管理文件，不自行清空技能目录。
+使用 `yicloud update --check` 检查 GitHub main 的版本和提交，`yicloud update` 更新当前 CLI 并自动同步已有受管理 Skill；同版本的新提交也会更新。`yicloud skill agents` 查看本机 Agent 检测结果，`yicloud skill install` 仅为检测到的 Agent 安装，或用 `--target` / `--path` 显式选择。status 的 matching 只表示与本地包文件匹配；local_edits/conflict 必须保留用户修改，不能强行覆盖。安装器负责移除旧版受管理文件，不自行清空技能目录。
 
 ## 完成标准
 

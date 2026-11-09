@@ -18,6 +18,15 @@ def isolated_config(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
+    for variable in (
+        "CLAUDE_CONFIG_DIR",
+        "HERMES_HOME",
+        "VIBE_HOME",
+        "APPDATA",
+        "FLATPAK_XDG_CONFIG_HOME",
+    ):
+        monkeypatch.delenv(variable, raising=False)
     monkeypatch.setenv("YICLOUD_CONFIG", str(tmp_path / "config.json"))
     for key in (
         "YICLOUD_AUTHN_TOKEN",

@@ -1,15 +1,12 @@
-"""Exercise real uv/pipx/venv update handoffs offline in disposable environments.
+"""Test real uv/pipx/venv updates between same-version local Git commits.
 
-The old version fixture is the current wheel relabeled 0.3.1, not a historical
-0.3.1 artifact (which has no update command). Only release discovery is stubbed;
-package-manager operations, process handoff and Skill protection are real.
+Only discovery/provenance is controlled to stand in for the official GitHub
+repository. Installers, console entry points, commit verification and Skills
+are real; no cloud credentials or external network are needed after download.
 """
 
 import argparse
-import base64
-import csv
-import hashlib
-import io
+import email
 import json
 import os
 import shutil
@@ -21,64 +18,96 @@ import venv
 import zipfile
 from pathlib import Path
 
-from installer_test_env import isolated_path
+from installer_test_env import isolated_agent_env, isolated_path
+
+REPOSITORY = "https://github.com/zaidengyifenzhong/YicloudSkill.git"
 
 
-def old_wheel(wheel, directory):
-    with zipfile.ZipFile(wheel) as source:
-        metadata_name = next(n for n in source.namelist() if n.endswith("/METADATA"))
-        metadata = source.read(metadata_name).decode()
-        version = next(line[9:] for line in metadata.splitlines() if line.startswith("Version: "))
-        old = "0.3.1"
-        destination = directory / wheel.name.replace(version, old)
-        files = {}
-        for name in source.namelist():
-            if name.endswith("/RECORD"):
-                continue
-            data = source.read(name)
-            if name == metadata_name:
-                data = metadata.replace(f"Version: {version}\n", f"Version: {old}\n").encode()
-            if name == "yicloud/skill/SKILL.md":
-                data += b"\nOld fixture Skill content.\n"
-            if name == "yicloud/update.py":
-                # Exercise the real console entry point, including Windows's .exe
-                # launcher. Only the fixture's network discovery is replaced.
-                release = dict(version=version, channel="fixture", spec=str(wheel))
-                data += f"\nlatest_release = lambda: {release!r}\n".encode()
-            files[name.replace(f"-{version}.dist-info/", f"-{old}.dist-info/")] = data
-        record = io.StringIO(newline="")
-        writer = csv.writer(record)
-        for name, data in files.items():
-            hashed = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=").decode()
-            writer.writerow([name, "sha256=" + hashed, len(data)])
-        record_name = metadata_name.replace(version, old).rsplit("/", 1)[0] + "/RECORD"
-        writer.writerow([record_name, "", ""])
-        with zipfile.ZipFile(destination, "w", zipfile.ZIP_DEFLATED) as output:
-            for name, data in files.items():
-                output.writestr(name, data)
-            output.writestr(record_name, record.getvalue())
-    return destination, version
+def source_repository(wheel, directory):
+    repo = directory / "source"
+    repo.mkdir()
+    with zipfile.ZipFile(wheel) as archive:
+        metadata = email.message_from_bytes(
+            archive.read(next(n for n in archive.namelist() if n.endswith("/METADATA")))
+        )
+        version = metadata["Version"]
+        dependencies = [d for d in metadata.get_all("Requires-Dist", []) if "extra ==" not in d]
+        for name in archive.namelist():
+            if name.startswith("yicloud/"):
+                assert ".." not in Path(name).parts
+                path = repo / "src" / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(archive.read(name))
+    (repo / "pyproject.toml").write_text(
+        '[build-system]\nrequires = ["setuptools>=77"]\nbuild-backend = "setuptools.build_meta"\n'
+        '[project]\nname = "yicloud-skill"\nversion = ' + json.dumps(version) + "\n"
+        'requires-python = ">=3.10"\ndependencies = ' + json.dumps(dependencies) + "\n"
+        '[project.scripts]\nyicloud = "yicloud.cli:main"\n'
+        '[tool.setuptools.packages.find]\nwhere = ["src"]\n'
+        '[tool.setuptools.package-data]\nyicloud = ["data/*.json", "skill/**/*.md", "skill/**/*.yaml", "skill/*.md", "skill/scripts/*.py"]\n',
+        encoding="utf-8",
+    )
+    entry = repo / "src/yicloud/skill/SKILL.md"
+    original = entry.read_bytes()
+    entry.write_bytes(original + b"\nInitial fixture commit.\n")
+
+    def git(*args):
+        return subprocess.run(
+            [
+                "git",
+                "-c",
+                "core.hooksPath=.git/no-hooks",
+                "-c",
+                "commit.gpgsign=false",
+                "-c",
+                "user.name=YicloudFixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                *args,
+            ],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    git("init", "--initial-branch=main")
+    git("add", ".")
+    git("commit", "-m", "Initial fixture")
+    before = git("rev-parse", "HEAD")
+    entry.write_bytes(original)
+    git("add", ".")
+    git("commit", "-m", "Same version, new Skill commit")
+    after = git("rev-parse", "HEAD")
+    return repo, version, before, after
 
 
 def verify(wheel, wheelhouse, manager):
     with tempfile.TemporaryDirectory(prefix=f"yicloud-update-{manager}-") as temporary:
         root = Path(temporary)
-        old, version = old_wheel(wheel, root)
+        repo, version, before, after = source_repository(wheel, root)
         env = dict(os.environ)
         env.pop("PYTHONPATH", None)
         for key in list(env):
-            if key.startswith("YICLOUD_"):
+            if key.startswith("YICLOUD_") or key in {
+                "CLAUDE_CONFIG_DIR",
+                "HERMES_HOME",
+                "VIBE_HOME",
+                "FLATPAK_XDG_CONFIG_HOME",
+            }:
                 env.pop(key)
         env.update(
             PATH=isolated_path(root),
             HOME=str(root),
             USERPROFILE=str(root),
             CODEX_HOME=str(root / "codex"),
+            XDG_CONFIG_HOME=str(root / ".config"),
             YICLOUD_CONFIG=str(root / "config.json"),
             UV_TOOL_DIR=str(root / "tools"),
             UV_TOOL_BIN_DIR=str(root / "bin"),
             UV_CACHE_DIR=str(root / "cache"),
-            UV_OFFLINE="true",
+            # uv permits local Git fetches; indexes/build requirements stay offline.
+            UV_OFFLINE="false",
             UV_PYTHON_DOWNLOADS="never",
             PIPX_HOME=str(root / "pipx"),
             PIPX_BIN_DIR=str(root / "bin"),
@@ -89,66 +118,87 @@ def verify(wheel, wheelhouse, manager):
             PIP_FIND_LINKS=str(wheelhouse),
             PIP_DISABLE_PIP_VERSION_CHECK="1",
         )
+        env.update(isolated_agent_env(root))
         config = root / "uv.toml"
         config.write_text(
             "no-index = true\nfind-links = [" + json.dumps(wheelhouse.as_posix()) + "]\n"
         )
         env["UV_CONFIG_FILE"] = str(config)
+        source = "git+" + repo.as_uri()
         if manager == "venv":
             prefix = root / "standalone space"
             venv.EnvBuilder(with_pip=True).create(prefix)
             python = prefix / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
-            command = [str(python), "-m", "pip", "install", str(old)]
+            command = [str(python), "-m", "pip", "install", source + "@" + before]
         elif manager == "uv":
             prefix = root / "tools/yicloud-skill"
-            command = ["uv", "tool", "install", "--python", sys.executable, str(old)]
+            command = ["uv", "tool", "install", "--python", sys.executable, source + "@" + before]
         else:
             prefix = root / "pipx/venvs/yicloud-skill"
-            command = ["pipx", "install", str(old)]
+            command = ["pipx", "install", source + "@" + before]
         subprocess.run(command, env=env, cwd=root, check=True, capture_output=True)
         python = prefix / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
         cli = prefix / ("Scripts/yicloud.exe" if os.name == "nt" else "bin/yicloud")
 
         def run(args, check=True):
-            return subprocess.run(
-                args,
-                env=env,
-                cwd=root,
-                text=True,
-                encoding="utf-8",
-                capture_output=True,
-                check=check,
+            result = subprocess.run(
+                args, env=env, cwd=root, text=True, encoding="utf-8", capture_output=True
+            )
+            if check and result.returncode:
+                raise RuntimeError(result.stdout + result.stderr)
+            return result
+
+        def fixture_provenance(commit):
+            data = {
+                "url": REPOSITORY,
+                "vcs_info": {"vcs": "git", "requested_revision": "main", "commit_id": commit},
+            }
+            run(
+                [
+                    str(python),
+                    "-I",
+                    "-c",
+                    'from importlib.metadata import distribution; from pathlib import Path; import sys; Path(distribution("yicloud-skill")._path, "direct_url.json").write_text(sys.argv[1], encoding="utf-8")',
+                    json.dumps(data),
+                ]
             )
 
-        # A local wheel fixture is intentionally not an automatic update source.
-        # Normalize only fixture provenance to simulate a stable index installation.
-        run(
-            [
-                str(python),
-                "-I",
-                "-c",
-                "from importlib.metadata import distribution; from pathlib import Path; d=distribution('yicloud-skill'); Path(d._path, 'direct_url.json').unlink(missing_ok=True)",
-            ]
-        )
-        run([str(cli), "skill", "install", "--target", "codex"])
+        def fixture_discovery():
+            release = dict(
+                version=version, commit=after, channel="github-main", spec=source + "@" + after
+            )
+            run(
+                [
+                    str(python),
+                    "-I",
+                    "-c",
+                    'from pathlib import Path; import yicloud.update as u, sys; p=Path(u.__file__); p.write_text(p.read_text(encoding="utf-8") + sys.argv[1], encoding="utf-8")',
+                    f"\nlatest_source = lambda: {release!r}\n",
+                ]
+            )
+
+        fixture_provenance(before)
+        fixture_discovery()
+        (root / "codex").mkdir()
+        (root / ".cursor").mkdir()
+        run([str(cli), "skill", "install"])
         skill = root / "codex/skills/yicloud/SKILL.md"
-        assert b"Old fixture" in skill.read_bytes()
-        config_bytes = b'{"accounts": {}, "connections": {}, "migration_sentinel": "keep"}'
+        assert b"Initial fixture commit" in skill.read_bytes()
+        assert (root / ".cursor/skills/yicloud/SKILL.md").exists()
+        config_bytes = b'{"accounts": {}, "connections": {}, "contexts": {}, "sentinel": "keep"}'
         (root / "config.json").write_bytes(config_bytes)
         command = [str(cli), "--json", "update"]
-        checked = run([*command, "--check"])
-        report = json.loads(checked.stdout)["data"]
+        report = json.loads(run([*command, "--check"]).stdout)["data"]
         assert report["installation"]["manager"] == manager, report
         assert report["update_available"]
-        # Local edits block the installer before any metadata/package changes.
+        assert report["current_version"] == report["latest_version"]
+        assert report["current_commit"] == before and report["latest_commit"] == after
         original = skill.read_bytes()
         skill.write_bytes(b"user edits")
         blocked = run(command, check=False)
         assert blocked.returncode != 0 and skill.read_bytes() == b"user edits"
-        assert "0.3.1" in run([str(cli), "--version"]).stdout
         skill.write_bytes(original)
-        result = run(command)
-        data = json.loads(result.stdout)
+        data = json.loads(run(command).stdout)
         if os.name == "nt":
             assert data["data"]["state"] == "started" and not data["data"]["completed"]
             result_path = Path(data["data"]["result"])
@@ -157,15 +207,21 @@ def verify(wheel, wheelhouse, manager):
                 time.sleep(0.1)
             data = json.loads(result_path.read_text())
         assert data["ok"], data
-        assert data["data"]["version"] == version
-        assert data["data"]["skills"][0]["state"] == "matching"
-        assert "Old fixture" not in skill.read_text()
-        assert version in run([str(cli), "--version"]).stdout
+        assert data["data"]["commit"] == after and data["data"]["version"] == version
+        assert len(data["data"]["skills"]) == 2
+        assert all(row["state"] == "matching" for row in data["data"]["skills"])
+        assert "Initial fixture commit" not in skill.read_text()
         assert (root / "config.json").read_bytes() == config_bytes
         assert not (root / ".claude").exists()
+        fixture_provenance(after)
+        fixture_discovery()
+        stamp = skill.stat().st_mtime_ns
+        current = json.loads(run(command).stdout)["data"]
+        assert not current["update_available"] and current["state"] == "current"
+        assert skill.stat().st_mtime_ns == stamp
         assert not list(prefix.parent.glob(".*-yicloud-update.lock"))
         print(
-            f"{manager}: real offline update, process handoff, Skill sync/edit protection and config preservation passed"
+            f"{manager}: same-version Git commit update, real console handoff, detected-Agent sync, edit protection, config preservation and no-op repeat passed"
         )
 
 
