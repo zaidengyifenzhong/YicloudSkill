@@ -358,7 +358,8 @@ def test_missing_pip_reports_exact_repair(environment, monkeypatch):
     monkeypatch.setattr(updater, "query", lambda _: None)
     report = report_fixture(environment, monkeypatch)
     assert "ensurepip" in report["manual_command"]
-    assert "pip install --upgrade" in report["manual_command"]
+    pip_install = "'pip' 'install' '--upgrade'" if os.name == "nt" else "pip install --upgrade"
+    assert pip_install in report["manual_command"]
     assert report["command"] is None
 
 

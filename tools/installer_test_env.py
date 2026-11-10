@@ -29,8 +29,15 @@ def isolated_path(root):
         executable = shutil.which(name)
         if executable:
             shutil.copy2(executable, directory / Path(executable).name)
-    paths = [str(directory), str(Path(sys._base_executable).parent)]
-    for entry in os.environ.get("PATH", "").split(os.pathsep):
+    for name in ("python", "python3"):
+        if os.name == "nt":
+            (directory / f"{name}.cmd").write_text(
+                f'@"{sys._base_executable}" %*\n', encoding="utf-8"
+            )
+        else:
+            (directory / name).symlink_to(sys._base_executable)
+    paths = [str(directory)]
+    for entry in [str(Path(sys._base_executable).parent), *os.get_exec_path()]:
         if entry and not any((Path(entry) / name).exists() for name in ("yicloud", "yicloud.exe")):
             paths.append(entry)
     return os.pathsep.join(paths)
