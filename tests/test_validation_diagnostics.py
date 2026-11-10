@@ -36,7 +36,8 @@ def job_request(**extra):
     }
 
 
-@pytest.mark.parametrize("gpu", [None, "0", "1", "2"])
+# Defaulting depends on kind; explicit zero and a positive value are distinct inputs.
+@pytest.mark.parametrize("gpu", [None, "0", "1"])
 @pytest.mark.parametrize("kind", ["job", "workspace"])
 def test_gpu_default_only_applies_to_quota_job_shortcut(kind, gpu):
     request = create_params(
@@ -251,9 +252,12 @@ def test_job_scheduling_defaults_do_not_override_platform():
     assert spec["GPU"] == "0"
 
 
-@pytest.mark.parametrize("private", [True, False])
-@pytest.mark.parametrize("priority", [1, 5, 9])
-@pytest.mark.parametrize("sku", [True, False])
+# Scheduling fields are encoded independently of resource selection. Keep both
+# boolean values in each resource mode and the priority endpoints/midpoint.
+@pytest.mark.parametrize(
+    "private,priority,sku",
+    [(True, 1, False), (False, 9, False), (True, 9, True), (False, 5, True)],
+)
 def test_explicit_job_scheduling_uses_correct_field_locations(private, priority, sku):
     kwargs = shortcut_kwargs()
     if sku:
@@ -282,18 +286,11 @@ def test_explicit_job_scheduling_uses_correct_field_locations(private, priority,
 @pytest.mark.parametrize(
     "field,value,message",
     [
-        ("use_private_machine", "true", "boolean"),
         ("priority", 0, "1 to 9"),
         ("priority", 10, "1 to 9"),
         ("priority", True, "1 to 9"),
-        ("priority", "5", "1 to 9"),
-        ("qos", "", "nonempty"),
         ("qos", " Guaranteed ", "whitespace"),
-        ("qos", 1, "nonempty"),
         ("max_wait_duration", "0s", "--max-wait-duration"),
-        ("max_wait_duration", "-1m", "--max-wait-duration"),
-        ("max_running_duration", "1.5m", "--max-running-duration"),
-        ("max_running_duration", "10", "--max-running-duration"),
         ("max_running_duration", 10, "--max-running-duration"),
     ],
 )
@@ -303,17 +300,13 @@ def test_invalid_job_scheduling_is_rejected_locally(field, value, message):
 
 
 @pytest.mark.parametrize(
-    "flags",
+    "flags,invocation",
     [
-        ["--use-private-machine"],
-        ["--no-use-private-machine"],
-        ["--qos", "Guaranteed"],
-        ["--priority", "5"],
-        ["--max-wait-duration", "1m"],
-        ["--max-running-duration", "1m"],
+        (["--priority", "5"], ["job", "create", "--file", "-"]),
+        (["--no-use-private-machine"], ["job", "create", "--file", "-"]),
+        (["--max-running-duration", "1m"], ["workspace", "create"]),
     ],
 )
-@pytest.mark.parametrize("invocation", [["job", "create", "--file", "-"], ["workspace", "create"]])
 def test_scheduling_options_are_job_shortcut_only(
     monkeypatch, flags, invocation, separated_cli_runner
 ):

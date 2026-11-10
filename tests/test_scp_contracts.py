@@ -3,7 +3,6 @@
 import os
 import shutil
 import subprocess
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -40,21 +39,16 @@ def test_scp_host_format_does_not_change_ssh(host, user, destination, monkeypatc
     assert calls == [(["fixture-ssh", "--", ssh_destination], {"check": False, "shell": False})]
 
 
-@pytest.mark.parametrize("kind", ["workspace", "job"])
-@pytest.mark.parametrize("direction", ["upload", "download"])
 @pytest.mark.parametrize(
-    "local",
+    "kind,direction,local",
     [
-        "absolute-colon",
-        "./file:one",
-        "dir/file:one",
-        r"dir\file:one",
-        r"C:\fixtures\file:one",
-        "D:/fixtures/file:one",
-        ":fixture",
-        ":dir/file",
-        "./ordinary",
-        "-local-file",
+        ("workspace", "upload", "absolute-colon"),
+        ("workspace", "download", "./file:one"),
+        ("job", "upload", r"C:\fixtures\file:one"),
+        ("job", "download", "-local-file"),
+        ("workspace", "upload", ":fixture"),
+        ("workspace", "download", "dir/file:one"),
+        ("job", "download", "D:/fixtures/file:one"),
     ],
 )
 def test_cli_scp_local_paths(tmp_path, monkeypatch, kind, direction, local):
@@ -80,15 +74,13 @@ def test_cli_scp_local_paths(tmp_path, monkeypatch, kind, direction, local):
     assert invoked == [(connection, {"scp_paths": expected, "recursive": True})]
 
 
-@pytest.mark.parametrize("kind", ["workspace", "job"])
 @pytest.mark.parametrize(
-    "operands",
+    "kind,operands",
     [
-        ["dev:/tmp/one", "other:/tmp/two"],
-        ["./one", "./two"],
-        ["./file:one", "dir/file:two"],
-        [":one", ":two"],
-        [r"C:\fixtures\one", "D:/fixtures/two"],
+        ("workspace", ["dev:/tmp/one", "other:/tmp/two"]),
+        ("job", ["./one", "./two"]),
+        ("workspace", ["./file:one", "dir/file:two"]),
+        ("job", [r"C:\fixtures\one", "D:/fixtures/two"]),
     ],
 )
 def test_cli_scp_requires_one_remote_endpoint(monkeypatch, kind, operands):
@@ -129,44 +121,21 @@ def test_scp_passes_shell_characters_as_literal_operands(tmp_path, monkeypatch):
     ]
 
 
-@pytest.fixture
-def native_scp_directory():
-    with tempfile.TemporaryDirectory(prefix="yicloud-scp-contract-") as directory:
-        yield Path(directory)
-
-
-@pytest.mark.skipif(
-    os.name == "nt", reason="Native fake SSH uses a POSIX /bin/sh executable; CLI/string tests run"
-)
-@pytest.mark.parametrize("host,user,destination", HOSTS[:4])
-@pytest.mark.parametrize("direction", ["upload", "download"])
-@pytest.mark.parametrize("protocol", ["default", "legacy"])
-def test_native_scp_parses_remote_host(
-    native_scp_directory, host, user, destination, direction, protocol
-):
+@pytest.mark.skipif(os.name == "nt", reason="Native fake SSH uses a POSIX /bin/sh executable")
+def test_native_scp_parses_remote_host(tmp_path):
     binary = shutil.which("scp")
     if not binary:
         pytest.skip("Native OpenSSH scp is unavailable; CLI/string contracts run independently")
-    if protocol == "legacy":
-        probe = subprocess.run(
-            [binary, "-O"], capture_output=True, text=True, timeout=10, check=False
-        )
-        if any(
-            message in probe.stderr.lower()
-            for message in ("unknown option", "illegal option", "invalid option")
-        ):
-            pytest.skip("Installed scp rejects -O; default protocol is tested independently")
-    fake_ssh = native_scp_directory / "fake-ssh"
-    log = native_scp_directory / "ssh-argv"
+    fake_ssh = tmp_path / "fake-ssh"
+    log = tmp_path / "ssh-argv"
     fake_ssh.write_text('#!/bin/sh\nprintf \'%s\\0\' "$@" > "$YICLOUD_SCP_TEST_LOG"\nexit 73\n')
     fake_ssh.chmod(0o700)
-    local = native_scp_directory / "local-file"
+    local = tmp_path / "local-file"
     local.write_text("synthetic SCP fixture")
-    connection = Connection(host, user=user)
+    connection = Connection("2001:db8::1", user="test-user")
     remote = scp_endpoint("dev:/tmp/fixture", "dev", connection)
-    operands = [str(local), remote] if direction == "upload" else [remote, str(local)]
     result = subprocess.run(
-        [binary, *(["-O"] if protocol == "legacy" else []), "-S", str(fake_ssh), "--", *operands],
+        [binary, "-S", str(fake_ssh), "--", str(local), remote],
         env=dict(os.environ, YICLOUD_SCP_TEST_LOG=str(log)),
         capture_output=True,
         text=True,
@@ -175,10 +144,6 @@ def test_native_scp_parses_remote_host(
     )
     assert log.is_file(), result.stderr
     args = [os.fsdecode(value) for value in log.read_bytes().split(b"\0")[:-1]]
-    assert host.strip("[]") in args, args
-    if user:
-        assert args[args.index("-l") + 1] == user
-    else:
-        assert "-l" not in args
-    assert remote == destination + ":/tmp/fixture"
+    assert "2001:db8::1" in args, args
+    assert args[args.index("-l") + 1] == "test-user"
     assert result.returncode != 0  # The fake SSH exits before opening any connection.

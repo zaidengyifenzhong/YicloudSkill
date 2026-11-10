@@ -179,20 +179,12 @@ def run_operation(
     lookup_settings=(),
     extra_file=None,
     settings=(),
-    timeout=1800,
-    interval=None,
-    follow=False,
-    target="default",
-    wait_replicas=None,
-    **options,
+    replicas=None,
 ):
-    if verb == "wait":
-        validate_polling(timeout, interval if interval is not None else 5)
-    elif follow:
-        validate_polling(None, interval if interval is not None else 3)
+    """Preview or execute one operation, checking scope before a write."""
     project, zone = scope_for(ctx, project, zone, required=True)
     w = WORKLOADS[kind]
-    action = w["status"] if verb == "wait" else w[verb]
+    action = w[verb]
     extra = read_json(extra_file)
     fields = assignments(settings)
     duplicates = extra.keys() & fields.keys()
@@ -202,63 +194,13 @@ def run_operation(
         )
     extra.update(fields)
     validate_workload_extra(kind, extra)
-    if verb == "logs":
-        controlled = {
-            "Start",
-            "End",
-            "StartTime",
-            "EndTime",
-            "Method",
-            "Limit",
-            "Replicas",
-            "Direction",
-        }
-        if controlled.intersection(extra):
-            raise InputError(
-                "Use log options for time, limit and instance; direction is managed automatically"
-            )
-    if verb == "wait" and target == "deleted" and by_name:
-        raise InputError("Waiting for deletion requires the saved resource ID, not --by-name")
     with client_for(ctx) as client:
         rid = resolve(
             client, kind, resource, project, zone, by_name, lookup=assignments(lookup_settings)
         )
-        params = workload_params(kind, verb, rid, project, zone, extra=extra, **options)
+        params = workload_params(kind, verb, rid, project, zone, extra=extra, replicas=replicas)
         if dry_run:
-            if verb == "wait" and target == "deleted":
-                action = w["list"]
-                params = workload_list_params(kind, rid, project, zone)
             emit(ctx, client.dry_run(w["service"], action, params), w["service"], action)
-        elif verb == "wait" and target == "deleted":
-            emit_result(
-                ctx,
-                wait_deleted(client, kind, rid, project, zone, timeout=timeout, interval=interval),
-                w["service"],
-                w["list"],
-            )
-        elif verb == "wait":
-            emit_result(
-                ctx,
-                wait(
-                    client,
-                    kind,
-                    params,
-                    timeout=timeout,
-                    interval=interval,
-                    target=target,
-                    replicas=wait_replicas,
-                ),
-                w["service"],
-                action,
-            )
-        elif follow:
-            follow_logs(
-                client,
-                kind,
-                params,
-                lambda row: emit(ctx, row, w["service"], action),
-                interval=interval or 3,
-            )
         else:
             if not operation(w["service"], action)["read_only"]:
                 client.dry_run(w["service"], action, params)
@@ -295,14 +237,70 @@ def wait_command(kind):
         help="Polling interval in seconds.",
     )
     @click.pass_context
-    def command(ctx, no_timeout, **options):
-        if options.get("wait_replicas") is not None and options["target"] != "default":
+    def command(
+        ctx,
+        resource,
+        project,
+        zone,
+        by_name,
+        dry_run,
+        lookup_settings,
+        no_timeout,
+        timeout,
+        interval,
+        target,
+        wait_replicas=None,
+        extra_file=None,
+        settings=(),
+    ):
+        if wait_replicas is not None and target != "default":
             raise InputError("--replicas cannot be combined with --target stopped/deleted")
         if no_timeout:
             if ctx.get_parameter_source("timeout") == ParameterSource.COMMANDLINE:
                 raise InputError("--timeout and --no-timeout are mutually exclusive")
-            options["timeout"] = None
-        run_operation(ctx, kind, "wait", **options)
+            timeout = None
+        validate_polling(timeout, interval)
+        if target == "deleted" and by_name:
+            raise InputError("Waiting for deletion requires the saved resource ID, not --by-name")
+        project, zone = scope_for(ctx, project, zone, required=True)
+        extra = read_json(extra_file)
+        fields = assignments(settings)
+        duplicates = extra.keys() & fields.keys()
+        if duplicates:
+            raise InputError(
+                "Fields supplied by both --extra-file and --set: " + ", ".join(sorted(duplicates))
+            )
+        extra.update(fields)
+        validate_workload_extra(kind, extra)
+        w = WORKLOADS[kind]
+        with client_for(ctx) as client:
+            rid = resolve(
+                client, kind, resource, project, zone, by_name, lookup=assignments(lookup_settings)
+            )
+            action = w["list"] if target == "deleted" else w["status"]
+            params = (
+                workload_list_params(kind, rid, project, zone)
+                if target == "deleted"
+                else workload_params(kind, "wait", rid, project, zone, extra=extra)
+            )
+            if dry_run:
+                emit(ctx, client.dry_run(w["service"], action, params), w["service"], action)
+            else:
+                if target == "deleted":
+                    result = wait_deleted(
+                        client, kind, rid, project, zone, timeout=timeout, interval=interval
+                    )
+                else:
+                    result = wait(
+                        client,
+                        kind,
+                        params,
+                        timeout=timeout,
+                        interval=interval,
+                        target=target,
+                        replicas=wait_replicas,
+                    )
+                emit_result(ctx, result, w["service"], action)
 
     if kind == "serving":
         command = click.option(
@@ -331,19 +329,91 @@ def logs_command(kind):
     @click.option("--limit", type=click.IntRange(1, 10000), default=200, show_default=True)
     @click.option("--instance", help="Replica filter.")
     @click.pass_context
-    def command(ctx, follow, interval, since, **options):
-        if follow and (ctx.obj["json"] or options["dry_run"] or options["end"] is not None):
+    def command(
+        ctx,
+        resource,
+        project,
+        zone,
+        by_name,
+        dry_run,
+        lookup_settings,
+        follow,
+        interval,
+        since,
+        start,
+        end,
+        limit,
+        instance,
+        extra_file=None,
+        settings=(),
+    ):
+        if follow and (ctx.obj["json"] or dry_run or end is not None):
             raise InputError("--follow requires logs without --json, --dry-run or --end")
         if interval is not None and not follow:
             raise InputError("--interval requires --follow")
-        if since is not None and options["start"] is not None:
+        if since is not None and start is not None:
             raise InputError("--since and --start are mutually exclusive")
-        options["start"] = timestamp_ns(options["start"])
-        options["end"] = timestamp_ns(options["end"])
+        start = timestamp_ns(start)
+        end = timestamp_ns(end)
         if since is not None:
-            options["end"] = time.time_ns() if options["end"] is None else options["end"]
-            options["start"] = options["end"] - duration_ns(since)
-        run_operation(ctx, kind, "logs", follow=follow, interval=interval, **options)
+            end = time.time_ns() if end is None else end
+            start = end - duration_ns(since)
+        if follow:
+            interval = 3 if interval is None else interval
+            validate_polling(None, interval)
+        project, zone = scope_for(ctx, project, zone, required=True)
+        extra = read_json(extra_file)
+        fields = assignments(settings)
+        duplicates = extra.keys() & fields.keys()
+        if duplicates:
+            raise InputError(
+                "Fields supplied by both --extra-file and --set: " + ", ".join(sorted(duplicates))
+            )
+        extra.update(fields)
+        validate_workload_extra(kind, extra)
+        if {
+            "Start",
+            "End",
+            "StartTime",
+            "EndTime",
+            "Method",
+            "Limit",
+            "Replicas",
+            "Direction",
+        }.intersection(extra):
+            raise InputError(
+                "Use log options for time, limit and instance; direction is managed automatically"
+            )
+        w = WORKLOADS[kind]
+        action = w["logs"]
+        with client_for(ctx) as client:
+            rid = resolve(
+                client, kind, resource, project, zone, by_name, lookup=assignments(lookup_settings)
+            )
+            params = workload_params(
+                kind,
+                "logs",
+                rid,
+                project,
+                zone,
+                extra=extra,
+                start=start,
+                end=end,
+                limit=limit,
+                instance=instance,
+            )
+            if dry_run:
+                emit(ctx, client.dry_run(w["service"], action, params), w["service"], action)
+            elif follow:
+                follow_logs(
+                    client,
+                    kind,
+                    params,
+                    lambda row: emit(ctx, row, w["service"], action),
+                    interval=interval,
+                )
+            else:
+                emit_result(ctx, client.call(w["service"], action, params), w["service"], action)
 
     return click.command("logs", help="Read workload logs.")(
         resource_options(extra_options(kind, "logs", command))

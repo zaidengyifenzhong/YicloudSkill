@@ -53,7 +53,7 @@ def request_command(service, action, name):
     schema = request_schema(op)
     fields = schema["properties"]
     id_field = EDIT_IDS.get((service, action))
-    guarded_write = workload_write_kind(service, action) is not None
+    write_kind = workload_write_kind(service, action)
     can_page = op["read_only"] and {"Limit", "Offset"} <= fields.keys()
     can_download = op["response_mode"] == "file"
 
@@ -119,11 +119,11 @@ def request_command(service, action, name):
                     ctx, paginated(client, service, action, params, all_pages), service, action
                 )
             else:
-                if guarded_write:
+                if write_kind is not None:
                     _, scope_zone = scope_for(
                         ctx, None, params.get("ZoneId") or verification_zone, allowed=("zone",)
                     )
-                    verify_workload_write(client, service, action, params, zone=scope_zone)
+                    verify_workload_write(client, write_kind, params, zone=scope_zone)
                 emit_result(
                     ctx, client.call(service, action, params, output=output), service, action
                 )
@@ -154,7 +154,7 @@ def request_command(service, action, name):
                 help=f"{field}: {spec.get('description', '')}.{required}{choices}",
             )
         )
-    if guarded_write and "ZoneId" not in fields:
+    if write_kind is not None and "ZoneId" not in fields:
         options.append(
             click.Option(
                 ["--zone", "verification_zone"],

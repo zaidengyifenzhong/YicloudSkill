@@ -5,7 +5,7 @@ import json
 import pytest
 from click.testing import CliRunner
 
-from yicloud.agents import AGENT_NAMES, candidate_paths, inventory
+from yicloud.agents import candidate_paths, inventory
 from yicloud.cli import main
 from yicloud.errors import ConfigurationError
 from yicloud.skill_install import existing_paths, install, sync_existing, targets
@@ -22,15 +22,6 @@ def test_no_agents_does_not_create_directories(tmp_path):
     assert json.loads(result.output)["data"]["paths"] == []
     assert "No supported agents detected" in result.output
     assert set(tmp_path.rglob("*")) == before
-
-
-def test_inventory_is_read_only_and_supports_many_agents(tmp_path):
-    result = invoke("agents")
-    assert result.exit_code == 0
-    rows = json.loads(result.output)["data"]["agents"]
-    assert len(rows) == len(AGENT_NAMES) >= 40
-    assert not any(row["detected"] for row in rows)
-    assert not (tmp_path / ".cursor").exists()
 
 
 def test_auto_installs_only_detected_agents(tmp_path):

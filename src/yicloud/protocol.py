@@ -50,7 +50,7 @@ def prepare_request(service, action, params=None, *, allow_unknown_fields=False)
     return op, query, body
 
 
-def _platform_code(payload, op, request_id, http_status):
+def _check_platform_error(payload, op, request_id, http_status, secrets, *, default_message):
     code = payload.get("Code", 0)
     if type(code) is not int:
         raise YicloudError(
@@ -59,7 +59,15 @@ def _platform_code(payload, op, request_id, http_status):
             outcome_unknown=not op["read_only"],
             http_status=http_status,
         )
-    return code
+    if code != 0:
+        secrets = [*secrets, *secret_values(payload)]
+        raise YicloudError(
+            redact(str(payload.get("Msg", default_message)), secrets),
+            code=code,
+            request_id=request_id,
+            http_status=http_status,
+            hints=_platform_error_hints(payload, secrets),
+        )
 
 
 def _platform_error_hints(payload, secrets):
@@ -107,19 +115,14 @@ def decode_response(op, response, *, output=None, secrets=()):
                     request_id=request_id,
                     http_status=response.status_code,
                 ) from e
-            code = (
-                _platform_code(error_payload, op, request_id, response.status_code)
-                if isinstance(error_payload, dict)
-                else 0
-            )
-            if code != 0:
-                secrets = [*secrets, *secret_values(error_payload)]
-                raise YicloudError(
-                    redact(str(error_payload.get("Msg", "Download failed")), secrets),
-                    code=code,
-                    request_id=request_id,
-                    http_status=response.status_code,
-                    hints=_platform_error_hints(error_payload, secrets),
+            if isinstance(error_payload, dict):
+                _check_platform_error(
+                    error_payload,
+                    op,
+                    request_id,
+                    response.status_code,
+                    secrets,
+                    default_message="Download failed",
                 )
         path = Path(output)
         fd, tmp = tempfile.mkstemp(prefix=".yicloud-download-", dir=path.parent)
@@ -165,15 +168,8 @@ def decode_response(op, response, *, output=None, secrets=()):
             outcome_unknown=not op["read_only"],
             http_status=response.status_code,
         )
-    code = _platform_code(payload, op, request_id, response.status_code)
-    if code != 0:
-        secrets = [*secrets, *secret_values(payload)]
-        raise YicloudError(
-            redact(str(payload.get("Msg", "Platform error")), secrets),
-            code=code,
-            request_id=request_id,
-            http_status=response.status_code,
-            hints=_platform_error_hints(payload, secrets),
-        )
+    _check_platform_error(
+        payload, op, request_id, response.status_code, secrets, default_message="Platform error"
+    )
     data = payload.get("Data", payload) if op["response_mode"] == "direct" else payload.get("Data")
     return data

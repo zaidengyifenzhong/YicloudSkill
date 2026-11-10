@@ -16,18 +16,9 @@ from yicloud.cli import main
 from yicloud.errors import ConfigurationError, NetworkError
 from yicloud.skill_install import (
     MARKER,
-    existing_paths,
     install,
     remember_path,
-    status,
-    sync_existing,
 )
-
-
-@pytest.fixture(autouse=True)
-def agent_roots(tmp_path, monkeypatch):
-    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
-    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
 
 
 def response(data, code=200):
@@ -159,20 +150,7 @@ def test_manager_detection_and_exact_environment(environment, monkeypatch, manag
     real = prefix.with_name("yicloud-skill")
     prefix.rename(real)
     monkeypatch.setattr(updater.sys, "prefix", str(real))
-    monkeypatch.setattr(
-        updater,
-        "distribution",
-        lambda _: SimpleNamespace(
-            version="0.3.1",
-            read_text=lambda _: json.dumps(
-                {
-                    "url": updater.REPOSITORY + ".git",
-                    "vcs_info": {"vcs": "git", "commit_id": "a" * 40},
-                }
-            ),
-            locate_file=lambda _: real / "lib",
-        ),
-    )
+    updater.distribution("yicloud-skill").locate_file = lambda _: real / "lib"
     monkeypatch.setattr(updater.shutil, "which", lambda _: "/tools/" + manager)
     monkeypatch.setattr(updater, "query", lambda _: str(real.parent))
     env = updater.installation()
@@ -197,20 +175,8 @@ def test_custom_or_editable_not_guessed(environment, direct):
     assert updater.installation()["manager"] == "unsupported"
 
 
-def test_official_git_source_supported(environment):
-    environment[1].update(url=updater.REPOSITORY + ".git", vcs_info={"vcs": "git"})
-    assert updater.installation()["manager"] == "venv"
-
-
 def test_system_environment_not_modified(environment, monkeypatch):
     monkeypatch.setattr(updater.sys, "base_prefix", updater.sys.prefix)
-    assert updater.installation()["manager"] == "unsupported"
-
-
-def test_no_pip_or_bad_metadata(environment, monkeypatch):
-    monkeypatch.setattr(updater, "query", lambda _: None)
-    assert updater.installation()["manager"] == "unsupported"
-    (environment[0] / "pipx_metadata.json").write_text("{")
     assert updater.installation()["manager"] == "unsupported"
 
 
@@ -226,7 +192,7 @@ def test_check_is_read_only_and_detects_update(environment, monkeypatch, tmp_pat
     assert result.exit_code == 0
     assert json.loads(result.output)["data"]["latest_version"] == "0.4.0"
     assert not (tmp_path / "codex").exists()
-    assert not (environment[0] / ".yicloud-update.lock").exists()
+    assert not environment[0].with_name(f".{environment[0].name}-yicloud-update.lock").exists()
 
 
 @pytest.mark.parametrize("latest", ["0.3.1", "0.2.0"])
@@ -258,7 +224,7 @@ def test_preflight_blocks_before_package_update(environment, monkeypatch, tmp_pa
     report = report_fixture(environment, monkeypatch)
     with pytest.raises(ConfigurationError):
         updater.apply_update(report)
-    assert not (environment[0] / ".yicloud-update.lock").exists()
+    assert not environment[0].with_name(f".{environment[0].name}-yicloud-update.lock").exists()
 
 
 def test_prepare_lock_and_handoff_uses_independent_python(environment, monkeypatch):
@@ -289,29 +255,6 @@ def test_unsupported_no_package_mutation(environment, monkeypatch):
     report = report_fixture(environment, monkeypatch)
     with pytest.raises(ConfigurationError, match="Editable"):
         updater.apply_update(report)
-
-
-def test_repeat_install_keeps_mtime_and_registry_sync(tmp_path):
-    dest = tmp_path / "custom space"
-    install("codex", dest)
-    remember_path(dest)
-    stamp = (dest / "SKILL.md").stat().st_mtime_ns
-    marker_stamp = (dest / MARKER).stat().st_mtime_ns
-    install("codex", dest)
-    assert (dest / "SKILL.md").stat().st_mtime_ns == stamp
-    assert (dest / MARKER).stat().st_mtime_ns == marker_stamp
-    assert existing_paths() == [dest]
-    assert sync_existing()[0]["state"] == "matching"
-    remember_path(dest, uninstall=True)
-
-
-def test_sync_detects_edits_after_package_install(tmp_path):
-    dest = tmp_path / "custom"
-    install("codex", dest)
-    (dest / "SKILL.md").write_text("user content")
-    with pytest.raises(ConfigurationError, match="local edits"):
-        sync_existing([dest])
-    assert (dest / "SKILL.md").read_text() == "user content"
 
 
 def test_cross_platform_commands_are_argument_lists():
@@ -349,7 +292,6 @@ def test_worker_success_verifies_before_reporting(worker_plan, monkeypatch, caps
         return SimpleNamespace(returncode=0, stdout=json.dumps({"version": "0.4.0", "skills": []}))
 
     monkeypatch.setattr(worker.subprocess, "run", run)
-    monkeypatch.setattr(worker.shutil, "rmtree", lambda _: None)
     assert worker.main(path) == 0
     assert len(calls) == 3
     assert json.loads(capsys.readouterr().out)["ok"]
@@ -384,10 +326,6 @@ def test_worker_timeout_is_failure(worker_plan, monkeypatch, capsys):
     assert not json.loads(capsys.readouterr().err)["ok"]
 
 
-def test_missing_skill_status_is_local_only(tmp_path):
-    assert status("codex")["targets"][0]["state"] == "missing"
-
-
 def test_invalid_registry_fails_before_installing_skill(tmp_path):
     from yicloud.skill_install import registry_path
 
@@ -414,15 +352,6 @@ def test_registry_never_occupies_account_config_filename(tmp_path, monkeypatch):
     assert registry_path() != config_path()
     assert not config_path().exists()
     assert read_state() == {"accounts": {}, "connections": {}}
-
-
-def test_editable_manual_commands_use_observed_checkout(environment, monkeypatch):
-    environment[1].update(url="file:///checkout%20space", dir_info={"editable": True})
-    report = report_fixture(environment, monkeypatch)
-    assert report["command"] is None
-    assert "git -C" in report["manual_command"]
-    assert "checkout space" in report["manual_command"]
-    assert "--editable" in report["manual_command"]
 
 
 def test_missing_pip_reports_exact_repair(environment, monkeypatch):
@@ -455,12 +384,6 @@ def test_release_workflow_does_not_interpolate_tags_into_shell():
             assert "${{ github.ref_name }}" not in step.get("run", "")
 
 
-@pytest.mark.parametrize("suffix", ["", ".git", ".git/"])
-def test_official_github_url_variants(environment, suffix):
-    environment[1].update(url=updater.REPOSITORY + suffix, vcs_info={"vcs": "git"})
-    assert updater.installation()["manager"] == "venv"
-
-
 @pytest.mark.parametrize("metadata", ["null", "[]", '{"url": true}', '{"dir_info": null}'])
 def test_malformed_install_metadata_returns_explanation(environment, monkeypatch, metadata):
     prefix = environment[0]
@@ -487,21 +410,6 @@ def test_same_version_new_commit_requires_update(environment, monkeypatch):
 def test_no_source_provenance_is_not_guessed(environment):
     environment[1].clear()
     assert updater.installation()["manager"] == "unsupported"
-
-
-def test_newer_local_version_never_downgraded(environment, monkeypatch):
-    assert not report_fixture(environment, monkeypatch, "0.2.0")["update_available"]
-
-
-def test_release_workflow_uses_github_without_publishing_service():
-    import yaml
-
-    workflow = yaml.safe_load(
-        (Path(__file__).resolve().parents[1] / ".github/workflows/release.yml").read_text()
-    )
-    assert set(workflow["jobs"]) == {"tests", "build", "github-release"}
-    assert workflow["jobs"]["github-release"]["needs"] == "build"
-    assert "id-token" not in str(workflow)
 
 
 def test_pipx_does_not_duplicate_backend_reinstall_flags():

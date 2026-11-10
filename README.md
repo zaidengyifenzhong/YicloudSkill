@@ -181,6 +181,23 @@ python3 -m venv .venv
 
 Windows 使用 `.venv\Scripts\python.exe`。CI 覆盖 Python 3.10、3.11、3.12 与 Linux、macOS、Windows，检查 lint、测试、Skill、wheel/sdist 内容、隔离安装及真实管理器的离线更新交接。`tools/check_updater.py` 使用临时 Git 仓库的同版本不同提交，验证更新、提交核对和多 Agent 同步；所有写入限于临时目录，不需要真实云账号。
 
+### Codebase overview
+
+生产代码位于 `src/yicloud/`：
+
+- [cli.py](src/yicloud/cli.py)：Click 入口与命令装配。
+- [commands/](src/yicloud/commands/)：CLI 参数、命令流程与输出。
+- [workflows.py](src/yicloud/workflows.py)：分页、资源查找、写前 scope 校验、等待与日志轮询。
+- [client.py](src/yicloud/client.py)：Python SDK，协调请求准备、发送与响应解析。
+- [protocol.py](src/yicloud/protocol.py)：请求编码、响应解析、平台错误与文件下载处理。
+- [transport.py](src/yicloud/transport.py)：HTTP 传输、认证头与重试。
+- [catalog.py](src/yicloud/catalog.py)：读取固定 API catalog，查询操作与校验请求字段。
+
+CLI 请求从 `cli.py → commands/ → YicloudClient.call()` 进入 SDK；分页、等待等业务流程使用 `workflows.py`。
+直接 SDK 调用从 `YicloudClient.call()` 开始，由它依次调用 `protocol.prepare_request() → transport.send() → protocol.decode_response()`。
+
+[tests/](tests/) 保存测试。日常验证使用上面的 Ruff lint、格式检查和 `pytest -q` 命令；构建与发布检查也列在上方。
+
 ## Release Process
 
 默认分发直接使用 GitHub `main`，不要求先发布版本。包版本唯一来源是 `pyproject.toml`；日常提交可保持同一版本，更新器通过提交 SHA 识别代码变化。

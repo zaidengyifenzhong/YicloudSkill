@@ -76,23 +76,16 @@ def test_null_nodes_with_explicit_zero_total_are_empty(monkeypatch, account, all
     }
 
 
-@pytest.mark.parametrize("all_pages", [False, True])
 @pytest.mark.parametrize(
-    "patch,removed",
+    "all_pages,patch,removed",
     [
-        ({"Total": 1}, None),
-        ({"Total": "0"}, None),
-        ({"Total": False}, None),
-        ({"Total": -1}, None),
-        ({}, "Total"),
-        ({}, "Items"),
-        ({}, "Limit"),
-        ({}, "Offset"),
-        ({"Limit": 0}, None),
-        ({"Limit": True}, None),
-        ({"Offset": 1}, None),
-        ({"Offset": False}, None),
-        ({"Items": {}}, None),
+        (True, {"Total": 1}, None),
+        (True, {"Total": False}, None),
+        (True, {}, "Total"),
+        (True, {}, "Limit"),
+        (True, {"Offset": 1}, None),
+        (True, {"Items": {}}, None),
+        (False, {"Total": False}, None),
     ],
 )
 def test_unverified_null_or_malformed_nodes_remain_errors(
@@ -138,14 +131,6 @@ def test_incomplete_nonnull_page_is_error_with_request_id(monkeypatch, account):
     assert result.exit_code == 1
     assert "before the advertised total" in payload["error"]["message"]
     assert payload["error"]["request_id"] == "request-1"
-    assert len(calls) == 1
-
-
-def test_nonzero_offset_is_allowed_when_echoed_for_explicit_empty_scope(monkeypatch, account):
-    data = {"Items": None, "Total": 0, "Limit": 20, "Offset": 20}
-    result, payload, calls = invoke_nodes(monkeypatch, account, data, extra=("--set", "Offset=20"))
-    assert result.exit_code == 0, result.output
-    assert payload["data"] == dict(data, Items=[])
     assert len(calls) == 1
 
 

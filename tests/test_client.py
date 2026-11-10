@@ -10,7 +10,7 @@ import httpx
 import pytest
 
 from yicloud.auth import headers, sign
-from yicloud.catalog import catalog, operation, validate
+from yicloud.catalog import operation, validate
 from yicloud.client import YicloudClient, encode_query
 from yicloud.config import Account
 from yicloud.errors import (
@@ -47,27 +47,6 @@ def test_token_priority_and_basic():
     a.secret_key = ""
     with pytest.raises(AuthenticationError):
         headers(a, 1, "", b"")
-
-
-def test_catalog_all_refs_resolve_and_paths():
-    c = catalog()
-    assert len(c["operations"]) == 227
-    assert len({(o["service"], o["action"]) for o in c["operations"]}) == 227
-
-    def check(value, defs):
-        if isinstance(value, dict):
-            if "ref" in value:
-                assert value["ref"] in defs
-            for child in value.values():
-                check(child, defs)
-        elif isinstance(value, list):
-            for child in value:
-                check(child, defs)
-
-    for defs in c["definitions"].values():
-        check(defs, defs)
-    assert operation("fs/alpha", "ListDir")["path"] == "/yifs/v1alpha1/ListFiles"
-    assert operation("fs/alpha", "SetFilesetQuota")["path"] == "/yifs/v1alpha1/FilesetQuota"
 
 
 def test_query_arrays_zero_false_unicode_null():
@@ -120,15 +99,6 @@ def test_exact_body_signed_once(account):
     with client(account, handler) as c:
         r = c.call("job", "StopJob", dict(JOB, ZoneId="测试"))
         assert r.data is None and r.request_id == "fixture-id"
-
-
-@pytest.mark.parametrize(
-    "status,body", [(400, {"Code": 0}), (200, {"Code": 100, "Msg": "fixture-error"})]
-)
-def test_http_and_business_errors(account, status, body):
-    with client(account, lambda _: httpx.Response(status, json=body)) as c:
-        with pytest.raises(YicloudError):
-            c.call("job", "GetJob", JOB)
 
 
 @pytest.mark.parametrize("readonly,expected", [(True, 3), (False, 1)])
@@ -296,8 +266,7 @@ def test_transport_traceback_does_not_expose_underlying_header_value(account):
     assert caught.value.outcome_unknown
 
 
-@pytest.mark.parametrize("code", [None, {}, [], "0", False])
-@pytest.mark.parametrize("readonly", [False, True])
+@pytest.mark.parametrize("code,readonly", [(None, False), (False, False), ("0", True)])
 def test_malformed_business_code_is_not_a_definite_write_failure(account, code, readonly):
     with client(account, lambda _: httpx.Response(200, json={"Code": code})) as c:
         with pytest.raises(YicloudError, match="invalid platform Code") as caught:

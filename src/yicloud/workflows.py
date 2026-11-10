@@ -313,10 +313,8 @@ def workload_write_kind(service, action):
     return None
 
 
-def verify_workload_write(client, service, action, params, *, zone=None):
-    kind = workload_write_kind(service, action)
-    if kind is None:
-        return
+def verify_workload_write(client, kind, params, *, zone=None):
+    """Verify every target of an already classified workload write."""
     w = WORKLOADS[kind]
     targets = params.get("Resources", [params])
     if not isinstance(targets, list) or not targets:

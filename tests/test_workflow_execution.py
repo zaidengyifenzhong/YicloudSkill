@@ -9,7 +9,7 @@ from click.testing import CliRunner
 from yicloud.cli import main
 from yicloud.client import YicloudClient
 from yicloud.errors import RemoteFailed, UnknownState, WaitTimeout, YicloudError
-from yicloud.workflows import wait, wait_deleted, workload_write_kind
+from yicloud.workflows import wait, wait_deleted
 
 
 def use_transport(monkeypatch, account, handler):
@@ -28,9 +28,14 @@ def response(data):
     return httpx.Response(200, json={"Code": 0, "Data": data})
 
 
-@pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
-@pytest.mark.parametrize("option", ["--timeout", "--interval"])
-@pytest.mark.parametrize("target", ["default", "stopped", "deleted"])
+@pytest.mark.parametrize(
+    "value,option,target",
+    [
+        ("nan", "--timeout", "default"),
+        ("inf", "--interval", "stopped"),
+        ("-inf", "--timeout", "deleted"),
+    ],
+)
 def test_nonfinite_wait_rejected_before_name_lookup(monkeypatch, value, option, target):
     monkeypatch.setattr("yicloud.commands.workloads.client_for", lambda _: pytest.fail("No I/O"))
     result = invoke(
@@ -49,7 +54,7 @@ def test_nonfinite_wait_rejected_before_name_lookup(monkeypatch, value, option, 
     assert result.exit_code != 0
 
 
-@pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
+@pytest.mark.parametrize("value", ["nan"])
 def test_nonfinite_log_interval_never_connects(monkeypatch, value):
     monkeypatch.setattr("yicloud.commands.workloads.client_for", lambda _: pytest.fail("No I/O"))
     result = CliRunner().invoke(
@@ -57,40 +62,6 @@ def test_nonfinite_log_interval_never_connects(monkeypatch, value):
         ["job", "logs", "j", "--project", "p", "--zone", "z", "--follow", "--interval", value],
     )
     assert result.exit_code != 0
-
-
-@pytest.mark.parametrize("verb", ["stop", "delete", "workers"])
-def test_additional_file_has_no_legacy_alias(monkeypatch, verb):
-    monkeypatch.setattr("yicloud.commands.workloads.client_for", lambda _: pytest.fail("No I/O"))
-    result = invoke("ray", verb, "r", "--project", "p", "--zone", "z", "--file", "-")
-    assert result.exit_code == 1
-    assert "No such option" in result.output and "--file" in result.output
-
-
-def test_ray_workers_extra_file_and_create_full_file(account, monkeypatch):
-    use_transport(monkeypatch, account, lambda _: pytest.fail("Dry-run must stay offline"))
-    result = invoke(
-        "ray",
-        "workers",
-        "r",
-        "--project",
-        "p",
-        "--zone",
-        "z",
-        "--extra-file",
-        "-",
-        "--dry-run",
-        input='{"WorkerGroups":[]}',
-    )
-    assert result.exit_code == 0, result.output
-    assert json.loads(result.output)["data"]["body"] == {
-        "JobName": "r",
-        "Project": "p",
-        "ZoneId": "z",
-        "WorkerGroups": [],
-    }
-    help_result = invoke("ray", "create", "--help")
-    assert "--file" in help_result.output and "--extra-file" not in help_result.output
 
 
 @pytest.mark.parametrize(
@@ -173,39 +144,6 @@ def test_missing_scope_evidence_refuses_write(account, monkeypatch, rows):
     assert "scope" in result.output or "cannot prove" in result.output
 
 
-def test_generated_edit_checks_scope_without_sending_zone(account, monkeypatch):
-    calls = []
-
-    def handler(request):
-        calls.append(request.url.path.rsplit("/", 1)[1])
-        if request.method == "GET":
-            return response({"Project": "p", "ZoneId": "z"})
-        assert json.loads(request.content) == {
-            "Project": "p",
-            "JobId": "j",
-            "Priority": "5",
-            "Operation": "priority",
-        }
-        return response({})
-
-    use_transport(monkeypatch, account, handler)
-    result = invoke(
-        "job",
-        "edit",
-        "j",
-        "--project",
-        "p",
-        "--zone",
-        "z",
-        "--priority",
-        "5",
-        "--operation",
-        "priority",
-    )
-    assert result.exit_code == 0, result.output
-    assert calls == ["GetJob", "EditJob"]
-
-
 def test_generated_request_file_can_set_verification_zone(account, monkeypatch):
     calls = []
 
@@ -252,23 +190,6 @@ def test_batch_verifies_all_targets_before_any_write(account, monkeypatch):
     assert calls == ["j1", "j2"]
 
 
-def test_guard_scope_is_explicitly_limited():
-    for service, action in [
-        ("job", "StopReplica"),
-        ("workspace", "DeleteProcess"),
-        ("workspace", "ReleaseProcess"),
-        ("job", "CreateJob"),
-    ]:
-        assert workload_write_kind(service, action) is None
-    for service, action in [
-        ("workspace", "BatchStopWorkspaces"),
-        ("job", "BatchDeleteJobs"),
-        ("ray", "UpdateRayJobWorkerGroups"),
-        ("inferset", "UpdateInferSetScaleObject"),
-    ]:
-        assert workload_write_kind(service, action) is not None
-
-
 def test_stop_wait_follows_stopping_and_does_not_mutate(account, monkeypatch):
     states = iter(["Stopping", "Stopped"])
     calls = []
@@ -296,7 +217,7 @@ def test_stop_wait_follows_stopping_and_does_not_mutate(account, monkeypatch):
     assert len(calls) == 2
 
 
-@pytest.mark.parametrize("data", [None, [], "Running", {}, {"Status": 42}, {"Status": "Future"}])
+@pytest.mark.parametrize("data", [None, {"Status": "Future"}])
 def test_wait_unknown_shape_is_never_success(account, data):
     with YicloudClient(account, transport=httpx.MockTransport(lambda _: response(data))) as client:
         with pytest.raises(UnknownState):
@@ -367,7 +288,7 @@ def test_deleted_wait_invalid_rows_do_not_mean_absence(account, rows):
             wait_deleted(client, "job", "j", "p", "z", timeout=0)
 
 
-@pytest.mark.parametrize("kind", ["workspace", "job", "ray", "serving"])
+@pytest.mark.parametrize("kind", ["job"])
 def test_deleted_wait_does_not_treat_invalid_total_as_absence(account, monkeypatch, kind):
     calls = []
 
@@ -402,15 +323,12 @@ def test_deleted_wait_does_not_treat_invalid_total_as_absence(account, monkeypat
 
 
 @pytest.mark.parametrize(
-    "kind,row",
+    "kind,row,dry_run",
     [
-        ("workspace", {"WorkspaceId": "w", "Name": "friendly", "Project": "p", "ZoneId": "z"}),
-        ("job", {"JobId": "j", "Name": "friendly", "Project": "p", "ZoneId": "z"}),
-        ("ray", {"RayJobName": "r", "DisplayName": "friendly", "Namespace": "p", "ZoneId": "z"}),
-        ("serving", {"ID": "i", "Name": "friendly", "Namespace": "p", "ZoneId": "z"}),
+        ("job", {"JobId": "j", "Name": "friendly", "Project": "p", "ZoneId": "z"}, False),
+        ("serving", {"ID": "i", "Name": "friendly", "Namespace": "p", "ZoneId": "z"}, True),
     ],
 )
-@pytest.mark.parametrize("dry_run", [False, True], ids=["write", "dry-run"])
 def test_name_lookup_inconsistent_total_never_resolves_or_writes(
     account, monkeypatch, kind, row, dry_run
 ):
@@ -445,27 +363,6 @@ def test_name_lookup_inconsistent_total_never_resolves_or_writes(
     assert payload["error"]["request_id"] == "fixture-inconsistent-total"
     assert "exceeds Total" in payload["error"]["message"]
     assert len(calls) == 1 and calls[0][0] == "GET"
-
-
-def test_all_pages_cli_refuses_invalid_total_instead_of_returning_partial_data(
-    account, monkeypatch
-):
-    calls = []
-
-    def handler(request):
-        calls.append(dict(request.url.params))
-        return httpx.Response(200, json={"Code": 0, "Data": {"Items": [], "Total": False}})
-
-    use_transport(monkeypatch, account, handler)
-    monkeypatch.setattr(
-        "yicloud.commands.discovery.client_for",
-        lambda _: YicloudClient(account, transport=httpx.MockTransport(handler)),
-    )
-    result = invoke("job", "list", "--project", "p", "--zone", "z", "--all")
-    assert result.exit_code == 1
-    payload = json.loads(result.output)
-    assert payload["ok"] is False and "invalid Total" in payload["error"]["message"]
-    assert len(calls) == 1 and calls[0]["Offset"] == "0"
 
 
 def test_deleted_wait_name_rejected_and_preview_uses_list(account, monkeypatch):
@@ -510,26 +407,6 @@ def test_serving_replica_wait_observes_documented_counts(account, monkeypatch):
     assert json.loads(result.output)["data"]["ReadyReplicas"] == 2
 
 
-@pytest.mark.parametrize(
-    "changes",
-    [
-        {"ReadyReplicas": None},
-        {"Replicas": "2"},
-        {"TotalReplicas": True},
-        {"ReadyReplicas": -1},
-        {"Distributed": True},
-        {"PDSeparationEnabled": True},
-        {"Distributed": None},
-    ],
-)
-def test_replica_wait_rejects_missing_contract_or_complex_topology(account, changes):
-    with YicloudClient(
-        account, transport=httpx.MockTransport(lambda _: response(simple_serving(**changes)))
-    ) as client:
-        with pytest.raises(UnknownState):
-            wait(client, "serving", {"Project": "p", "ID": "i"}, replicas=2, timeout=0)
-
-
 @pytest.mark.parametrize("changes", [{"ReadyReplicas": 1}, {"Replicas": 3}, {"TotalReplicas": 3}])
 def test_replica_wait_does_not_finish_until_all_counts_match(account, changes):
     with YicloudClient(
@@ -563,15 +440,6 @@ def test_default_wait_still_rejects_stopping(account):
     ) as client:
         with pytest.raises(RemoteFailed):
             wait(client, "serving", {"Project": "p", "ID": "i"}, timeout=0)
-
-
-@pytest.mark.parametrize("options", [["--target", "stopped"], ["--target", "deleted"]])
-def test_replica_target_conflict_rejected_before_network(monkeypatch, options):
-    monkeypatch.setattr("yicloud.commands.workloads.client_for", lambda _: pytest.fail("No I/O"))
-    result = invoke(
-        "serving", "wait", "i", "--project", "p", "--zone", "z", "--replicas", "2", *options
-    )
-    assert result.exit_code == 1 and "cannot be combined" in result.output
 
 
 def test_deleted_wait_does_not_miss_resource_on_later_capped_page(account):

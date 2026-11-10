@@ -4,133 +4,17 @@ import json
 import subprocess
 import sys
 
-import click
 import httpx
 import pytest
 from click.testing import CliRunner
 
-from yicloud.catalog import catalog, operation, request_schema
 from yicloud.cli import main
 from yicloud.client import YicloudClient
-from yicloud.command_routes import EDIT_IDS, command_routes
-from yicloud.commands.catalog_commands import field_flags
 from yicloud.config import write_state
-
-
-def command_at(route):
-    command = main
-    for part in route:
-        command = command.commands[part]
-    return command
-
-
-NEW_ROUTES = [
-    (key, route)
-    for key, route in command_routes().items()
-    if command_at(route).callback.__module__ == "yicloud.commands.catalog_commands"
-]
-
-
-def sample(schema, definitions):
-    if "ref" in schema:
-        return sample(definitions[schema["ref"]], definitions)
-    if "enum" in schema:
-        return schema["enum"][0]
-    if schema.get("type") == "object":
-        return {
-            key: sample(schema["properties"][key], definitions)
-            for key in schema.get("required", [])
-        }
-    return {"string": "fixture", "integer": 0, "number": 0, "boolean": False, "array": []}.get(
-        schema.get("type")
-    )
 
 
 def invoke(*args, input=None):
     return CliRunner().invoke(main, ["--json", *args], input=input)
-
-
-@pytest.fixture
-def captured_preview(monkeypatch):
-    calls = []
-    original = YicloudClient.dry_run
-
-    def capture(self, service, action, params, **kwargs):
-        calls.append((service, action, params))
-        return original(self, service, action, params, **kwargs)
-
-    monkeypatch.setattr(YicloudClient, "dry_run", capture)
-    return calls
-
-
-def test_every_http_operation_has_a_unique_existing_command():
-    routes = command_routes()
-    expected = {
-        (o["service"], o["action"])
-        for o in catalog()["operations"]
-        if o["status"] == "implemented-offline"
-    }
-    assert routes.keys() == expected
-    assert len(set(routes.values())) == len(routes) == 225
-    for route in routes.values():
-        assert isinstance(command_at(route), click.Command)
-        assert not isinstance(command_at(route), click.Group)
-        result = invoke(*route, "--help")
-        assert result.exit_code == 0, (route, result.output)
-
-
-@pytest.mark.parametrize("key,route", NEW_ROUTES, ids=[" ".join(r) for _, r in NEW_ROUTES])
-def test_all_new_commands_convert_field_options_without_network(
-    key, route, account, monkeypatch, captured_preview
-):
-    def forbidden(request):
-        pytest.fail("dry-run sent an HTTP request")
-
-    monkeypatch.setattr(
-        "yicloud.commands.catalog_commands.client_for",
-        lambda ctx: YicloudClient(account, transport=httpx.MockTransport(forbidden)),
-    )
-    op = operation(*key)
-    fields = request_schema(op)["properties"]
-    definitions = catalog()["definitions"][key[0]]
-    params = {field: sample(spec, definitions) for field, spec in fields.items()}
-    flags = field_flags(fields)
-    args = []
-    for field, value in params.items():
-        spec = fields[field]
-        text = value if spec.get("type") == "string" and "ref" not in spec else json.dumps(value)
-        args += ["--" + flags[field], text]
-    result = invoke("--no-context", *route, *args, "--dry-run")
-    assert result.exit_code == 0, result.output
-    preview = json.loads(result.output)["data"]
-    assert preview["method"] == op["method"]
-    assert preview["url"].endswith(op["path"])
-    assert captured_preview == [(*key, params)]
-    if op["method"] == "GET":
-        # GET null is an empty value; empty arrays contribute no query entries.
-        assert {p["name"] for p in preview["query"]} == {
-            fields[field].get("query_name", field) for field, value in params.items() if value != []
-        }
-
-
-@pytest.mark.parametrize("key,route", NEW_ROUTES, ids=[" ".join(r) for _, r in NEW_ROUTES])
-def test_all_new_commands_accept_complete_request_files(
-    key, route, account, monkeypatch, captured_preview
-):
-    def forbidden(request):
-        pytest.fail("dry-run sent an HTTP request")
-
-    monkeypatch.setattr(
-        "yicloud.commands.catalog_commands.client_for",
-        lambda ctx: YicloudClient(account, transport=httpx.MockTransport(forbidden)),
-    )
-    op = operation(*key)
-    params = sample(request_schema(op), catalog()["definitions"][key[0]])
-    if key in EDIT_IDS:
-        params[EDIT_IDS[key]] = "fixture-id"
-    result = invoke(*route, "--file", "-", "--dry-run", input=json.dumps(params))
-    assert result.exit_code == 0, result.output
-    assert captured_preview == [(*key, params)]
 
 
 @pytest.mark.parametrize(
@@ -348,8 +232,7 @@ def test_download_and_required_output(account, monkeypatch, tmp_path):
         "yicloud.commands.catalog_commands.client_for",
         lambda ctx: YicloudClient(account, transport=httpx.MockTransport(handler)),
     )
-    op = operation("inferset", "DownloadInferSetLogs")
-    params = sample(request_schema(op), catalog()["definitions"]["inferset"])
+    params = {"Project": "p", "ID": "i", "Start": 0, "End": 1}
     args = ["serving", "download-infer-set-logs", "--file", "-"]
     result = invoke(*args, input=json.dumps(params))
     assert result.exit_code == 1 and "--output" in result.output

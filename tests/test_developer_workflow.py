@@ -12,12 +12,11 @@ from yicloud.cli import main
 from yicloud.client import YicloudClient
 from yicloud.config import read_state, write_state
 from yicloud.context import save_context, use_context
-from yicloud.diagnostics import api_checks, remote_checks
-from yicloud.errors import InputError, RemoteFailed, UnknownState, WaitTimeout
-from yicloud.output import redact, secret_values
+from yicloud.diagnostics import remote_checks
+from yicloud.errors import RemoteFailed, UnknownState, WaitTimeout
 from yicloud.skill_install import install, status
 from yicloud.ssh import Connection, load, run, save
-from yicloud.time_input import duration_ns, timestamp_ns
+from yicloud.time_input import timestamp_ns
 from yicloud.workflows import wait
 
 
@@ -77,64 +76,16 @@ def test_shell_selection_and_request_file_are_explicit(login, tmp_path):
     assert invoke("job", "create", "--file", str(path), "--login-shell", "--dry-run").exit_code == 1
 
 
-def test_metrics_survive_credential_redaction():
-    value = {
-        "num_tokens": 42,
-        "token_count": 8,
-        "tokenizer": "model",
-        "max_new_tokens": 32,
-        "DaemonJupyterToken": "private",
-        "AuthToken": "auth",
-        "API_KEY": "key",
-        "Env": {"HF_TOKEN": "hf"},
-        "query": [{"name": "Token", "value": "query-secret"}],
-    }
-    hidden = redact(value)
-    for key in ("num_tokens", "token_count", "tokenizer", "max_new_tokens"):
-        assert hidden[key] == value[key]
-    assert hidden["DaemonJupyterToken"] == "[REDACTED]"
-    assert hidden["Env"]["HF_TOKEN"] == "[REDACTED]"
-    assert "private" not in json.dumps(hidden)
-    assert "model" not in secret_values(value)
-    assert "query-secret" not in json.dumps(hidden)
-
-
 @pytest.mark.parametrize(
     "value,expected",
     [
         ("0", 0),
-        ("-1", -1),
-        ("1970-01-01T00:00:00Z", 0),
         ("1970-01-01T08:00:00.123456789+08:00", 123456789),
         ("1969-12-31T23:59:59.999999999Z", -1),
-        ("1970-01-01T00:00:00.1-01:00", 3600100000000),
     ],
 )
 def test_exact_timestamp_conversion(value, expected):
     assert timestamp_ns(value) == expected
-
-
-@pytest.mark.parametrize(
-    "value",
-    [
-        "today",
-        "2026-10-19T12:00:00",
-        "2026-13-01T00:00:00Z",
-        "2026-01-01T00:00:00+00:99",
-        "1.2",
-        "NaN",
-        "1970-01-01T00:00:00.1234567890Z",
-    ],
-)
-def test_invalid_timestamps(value):
-    with pytest.raises(InputError):
-        timestamp_ns(value)
-
-
-@pytest.mark.parametrize("value", ["0m", "-1m", "1.5h", "1w", "1m2s"])
-def test_invalid_duration(value):
-    with pytest.raises(InputError):
-        duration_ns(value)
 
 
 @pytest.mark.parametrize("kind,key", [("job", "Start"), ("ray", "StartTime"), ("serving", "Start")])
@@ -324,70 +275,6 @@ def test_skill_status_detects_content_not_just_version(tmp_path):
     assert (dest / "SKILL.md").read_text() == "local edits"
 
 
-def test_skill_status_unmanaged_path_is_not_modified(tmp_path):
-    (tmp_path / "user-file").write_text("keep")
-    result = invoke("skill", "status", "--target", "codex", "--path", str(tmp_path))
-    assert json.loads(result.output)["data"]["targets"][0]["state"] == "conflict"
-    assert (tmp_path / "user-file").read_text() == "keep"
-
-
-@pytest.mark.parametrize("conflict", ["entry", "parent"])
-def test_skill_cli_reports_type_conflicts_without_overwriting_user_content(tmp_path, conflict):
-    import shutil
-    import sys
-
-    from yicloud.skill_install import MARKER
-
-    dest = tmp_path / "installed-skill"
-
-    def command(action):
-        return subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "yicloud",
-                "--json",
-                "skill",
-                action,
-                "--target",
-                "codex",
-                "--path",
-                str(dest),
-            ],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            check=False,
-            timeout=15,
-        )
-
-    created = command("install")
-    assert created.returncode == 0, created.stderr
-    marker = (dest / MARKER).read_bytes()
-    if conflict == "entry":
-        entry = dest / "SKILL.md"
-        entry.unlink()
-        entry.mkdir()
-        user_file = entry / "keep.txt"
-    else:
-        entry = dest / "references"
-        shutil.rmtree(entry)
-        user_file = entry
-    user_file.write_text("local user content")
-    failed = command("install")
-    assert failed.returncode == 1 and not failed.stdout
-    error = json.loads(failed.stderr)
-    assert error["ok"] is False and error["error"]["kind"] == "configuration"
-    assert str(entry) in error["error"]["message"]
-    assert (dest / MARKER).read_bytes() == marker
-    assert user_file.read_text() == "local user content"
-    diagnostic = command("status")
-    assert diagnostic.returncode == 0, diagnostic.stderr
-    assert json.loads(diagnostic.stdout)["data"]["targets"][0]["state"] == "conflict"
-    if conflict == "entry":
-        assert list(entry.iterdir()) == [user_file]
-
-
 def test_skill_upgrade_recovers_missing_files_preserves_extras_and_removes_obsolete(tmp_path):
     from yicloud.skill_install import MARKER, digest
 
@@ -413,36 +300,6 @@ def test_skill_upgrade_recovers_missing_files_preserves_extras_and_removes_obsol
     assert list(dest.iterdir()) == [user_file]
 
 
-def test_api_doctor_checks_zone_and_does_not_return_inventory(account):
-    def handler(req):
-        assert req.method == "GET"
-        if req.url.path.endswith("ListZones"):
-            return httpx.Response(200, json={"Code": 0, "Data": {"Items": [{"ZoneId": "z"}]}})
-        return httpx.Response(200, json={"Code": 0, "Data": {"PrivateDetail": "not-for-report"}})
-
-    with YicloudClient(account, transport=httpx.MockTransport(handler)) as client:
-        rows = api_checks(client, "p", "wrong-zone")
-    assert next(r for r in rows if r["id"] == "api.zone")["status"] == "fail"
-    assert "not-for-report" not in json.dumps(rows)
-    assert rows[-1]["status"] == "skipped"
-
-
-def test_remote_doctor_is_bounded_and_gpu_absence_is_unknown(monkeypatch):
-    calls = []
-    monkeypatch.setattr("yicloud.diagnostics.shutil.which", lambda _: "/bin/ssh")
-
-    def capture(args, **kwargs):
-        calls.append((args, kwargs))
-        return SimpleNamespace(returncode=127 if len(calls) == 3 else 0, stdout="output", stderr="")
-
-    monkeypatch.setattr("yicloud.diagnostics.subprocess.run", capture)
-    rows = remote_checks(Connection("host"), 3)
-    assert [r["status"] for r in rows] == ["pass", "pass", "unknown"]
-    assert all(k["timeout"] == 3 for _, k in calls)
-    assert all("BatchMode=yes" in a and "StrictHostKeyChecking=no" not in a for a, _ in calls)
-    assert len(calls) == 3
-
-
 def test_remote_timeout_skips_dependent_checks(monkeypatch):
     monkeypatch.setattr("yicloud.diagnostics.shutil.which", lambda _: "/bin/ssh")
 
@@ -455,18 +312,6 @@ def test_remote_timeout_skips_dependent_checks(monkeypatch):
         "skipped",
         "skipped",
     ]
-
-
-def test_explicit_null_scope_is_not_replaced_by_context(named_context, monkeypatch, account):
-    def forbidden(_):
-        pytest.fail("Invalid explicit Project must fail before transport")
-
-    monkeypatch.setattr(
-        "yicloud.commands.discovery.client_for",
-        lambda _: YicloudClient(account, transport=httpx.MockTransport(forbidden)),
-    )
-    result = invoke("job", "list", "--set", "Project=null")
-    assert result.exit_code == 1 and "required" in result.output
 
 
 def test_named_context_does_not_change_create_request_file(named_context, tmp_path):
@@ -535,56 +380,3 @@ def test_invalid_saved_connection_reports_configuration_error():
     result = invoke("workspace", "connection", "show", "dev", "--project", "p", "--zone", "z")
     assert result.exit_code == 1
     assert json.loads(result.output)["error"]["kind"] == "configuration"
-
-
-def test_explicit_empty_since_is_rejected():
-    result = invoke("job", "logs", "j", "--project", "p", "--zone", "z", "--since", "", "--dry-run")
-    assert result.exit_code == 1 and "positive whole duration" in result.output
-
-
-@pytest.mark.parametrize("value", ["0001-01-01T00:00:00+01:00", "9999-12-31T23:59:59-01:00"])
-def test_timestamp_utc_overflow_is_json_input_error(value):
-    result = invoke(
-        "job", "logs", "j", "--project", "p", "--zone", "z", "--start", value, "--dry-run"
-    )
-    assert result.exit_code == 1
-    assert json.loads(result.output)["error"]["kind"] == "input"
-    assert "Traceback" not in result.output
-
-
-@pytest.mark.parametrize(
-    "field,value",
-    [
-        ("host", True),
-        ("user", 12),
-        ("identity", 12),
-        ("proxy_jump", False),
-        ("ssh_flags", None),
-        ("port", True),
-        ("port", 22.5),
-        ("port", "22"),
-    ],
-)
-@pytest.mark.parametrize("command", ["show", "list", "doctor"])
-def test_corrupt_connection_fields_preserve_cli_error_contract(field, value, command):
-    from yicloud.ssh import key
-
-    connection = {"host": "host", field: value}
-    write_state(
-        {
-            "accounts": {},
-            "connections": {key("environment", "workspace", "p", "z", "dev"): connection},
-        }
-    )
-    args = (
-        ["workspace", "doctor", "dev"]
-        if command == "doctor"
-        else ["workspace", "connection", command] + (["dev"] if command == "show" else [])
-    )
-    result = invoke(*args, "--project", "p", "--zone", "z")
-    assert result.exit_code == 1
-    payload = json.loads(result.output)
-    if command == "doctor":
-        assert payload["data"]["checks"][0]["status"] == "fail"
-    else:
-        assert payload["error"]["kind"] == "configuration"

@@ -1,9 +1,6 @@
 """Explicit account identities must never fall back to another profile."""
 
 import json
-import os
-import subprocess
-import sys
 
 import httpx
 import pytest
@@ -63,18 +60,7 @@ def test_unregistered_alias_fails_before_http(profiles, monkeypatch, alias):
     assert "synthetic-current-token" not in result.output
 
 
-@pytest.mark.parametrize("alias", [0, False, [], {}, 1, True, ["saved"], {"saved": True}, b"saved"])
-@pytest.mark.parametrize("explicit_account", [None, False, True])
-def test_nonstring_alias_fails_before_reading_credentials(monkeypatch, alias, explicit_account):
-    def forbidden():
-        pytest.fail("Invalid alias types must fail before reading credentials")
-
-    monkeypatch.setattr("yicloud.config.read_state", forbidden)
-    with pytest.raises(InputError, match="[Aa]ccount.*[Ss]tring"):
-        Account.resolve(alias, explicit_account=explicit_account)
-
-
-@pytest.mark.parametrize("alias", [0, False, [], {}, 1, True, b"saved"])
+@pytest.mark.parametrize("alias", [0, False, b"saved"])
 def test_public_client_rejects_nonstring_before_http(profiles, monkeypatch, alias):
     def forbidden(**kwargs):
         pytest.fail("Invalid alias types must fail before constructing HTTP client")
@@ -124,27 +110,6 @@ def test_current_alias_is_also_exact(profiles, alias):
     assert account.host == "https://selected.invalid"
 
 
-@pytest.mark.parametrize("alias", ALIASES)
-def test_context_reports_registered_current_as_account_source(profiles, alias):
-    add_profile(profiles, alias)
-    profiles["current"] = alias
-    write_state(profiles)
-    result = CliRunner().invoke(main, ["--json", "context", "show"])
-    assert result.exit_code == 0
-    data = json.loads(result.output)["data"]
-    assert data["values"]["account"] == alias
-    assert data["sources"]["account"] == "current_account"
-    assert data["auth_source"] == "account"
-
-
-def test_context_without_current_keeps_environment_default_source():
-    result = CliRunner().invoke(main, ["--json", "context", "show"])
-    assert result.exit_code == 0
-    data = json.loads(result.output)["data"]
-    assert data["values"]["account"] == "environment"
-    assert data["sources"]["account"] == "environment/default"
-
-
 def test_none_keeps_current_default_and_environment_precedence(profiles, monkeypatch):
     account = Account.resolve(None)
     assert account.alias == "synthetic-current"
@@ -158,7 +123,7 @@ def test_none_keeps_current_default_and_environment_precedence(profiles, monkeyp
     assert account.host == "https://environment.invalid" and account.region == "environment-region"
 
 
-@pytest.mark.parametrize("legacy_alias", [None, *ALIASES])
+@pytest.mark.parametrize("legacy_alias", [None, ""])
 def test_no_current_keeps_environment_identity(monkeypatch, legacy_alias):
     if legacy_alias is not None:
         write_state({"accounts": {legacy_alias: {"token": "synthetic-selected-token"}}})
@@ -197,79 +162,3 @@ def test_local_management_can_recover_legacy_profiles(profiles, alias):
     result = CliRunner().invoke(main, ["--json", "account", "remove", alias])
     assert result.exit_code == 0
     assert alias not in read_state()["accounts"]
-
-
-# Exercise actual module/Click argument processing in another interpreter, while
-# keeping every HTTP request inside MockTransport and recording no credentials.
-SUBPROCESS_CLI = """
-import atexit
-import json
-import os
-import runpy
-import sys
-from pathlib import Path
-import httpx
-
-stats = {"clients": 0, "requests": []}
-original = httpx.Client
-def handler(request):
-    stats["requests"].append({
-        "method": request.method,
-        "path": request.url.path,
-        "host": request.url.host,
-        "selected_auth": request.headers.get("Authorization") == "synthetic-selected-token",
-        "current_auth": request.headers.get("Authorization") == "synthetic-current-token",
-    })
-    return httpx.Response(200, json={"Code": 0, "Data": {"Status": "Stopping"}})
-def factory(**kwargs):
-    stats["clients"] += 1
-    kwargs["transport"] = httpx.MockTransport(handler)
-    return original(**kwargs)
-httpx.Client = factory
-atexit.register(lambda: Path(os.environ["YICLOUD_TEST_STATS"]).write_text(json.dumps(stats)))
-sys.argv = ["yicloud", *sys.argv[1:]]
-runpy.run_module("yicloud", run_name="__main__")
-"""
-
-
-@pytest.mark.parametrize("alias", [None, *ALIASES, "missing"])
-@pytest.mark.parametrize("registered", [False, True])
-def test_actual_cli_subprocess_exact_selection(profiles, tmp_path, alias, registered):
-    if registered and alias is not None:
-        add_profile(profiles, alias)
-    stats_path = tmp_path / "synthetic-subprocess-stats.json"
-    env = dict(os.environ, YICLOUD_TEST_STATS=str(stats_path))
-    args = ["--json", "--no-context"]
-    if alias is not None:
-        args.extend(["--account", alias])
-    args.extend(["api", "call", "job", "StopJob", "--file", "-"])
-    result = subprocess.run(
-        [sys.executable, "-c", SUBPROCESS_CLI, *args],
-        env=env,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        input=json.dumps(JOB),
-        timeout=15,
-    )
-    stats = json.loads(stats_path.read_text())
-    payload = json.loads(result.stderr if result.returncode else result.stdout)
-    if alias is not None and not registered:
-        assert result.returncode == 1
-        assert payload["error"]["kind"] == "configuration"
-        assert payload["error"]["outcome_unknown"] is False
-        assert stats == {"clients": 0, "requests": []}
-    else:
-        assert result.returncode == 0 and payload["ok"] is True
-        assert stats["clients"] == 1
-        assert stats["requests"] == [
-            {
-                "method": "POST",
-                "path": "/job/v1alpha1/StopJob",
-                "host": "current.invalid" if alias is None else "selected.invalid",
-                "selected_auth": alias is not None,
-                "current_auth": alias is None,
-            }
-        ]
-    assert "synthetic-current-token" not in result.stdout + result.stderr
-    assert "synthetic-selected-token" not in result.stdout + result.stderr

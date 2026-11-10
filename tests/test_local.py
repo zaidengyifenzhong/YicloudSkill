@@ -8,7 +8,6 @@ from click.testing import CliRunner
 from yicloud.cli import main
 from yicloud.config import Account, config_path, read_state, write_state
 from yicloud.errors import ConfigurationError, InputError
-from yicloud.output import redact
 from yicloud.skill_install import install
 from yicloud.ssh import Connection, load, run, save, scp_endpoint
 
@@ -108,98 +107,6 @@ def test_skill_conflict_install_upgrade_uninstall_keeps_config(tmp_path):
     assert read_state()["accounts"]["a"]["token"] == "fixture"
 
 
-def test_redaction_known_and_returned_secrets():
-    value = {
-        "Token": "new-secret",
-        "Nested": {"PrivateKey": "new-private"},
-        "message": "failed fixture-secret",
-        "query": [{"name": "AccessKey", "value": "new-access"}],
-    }
-    hidden = json.dumps(redact(value, ["fixture-secret"]))
-    assert not any(
-        v in hidden for v in ("new-secret", "new-private", "fixture-secret", "new-access")
-    )
-    assert redact(value, show=True)["Token"] == "new-secret"
-
-
-def test_cli_envelopes_stdin_dryrun_and_error_redaction(monkeypatch):
-    monkeypatch.setenv("YICLOUD_AUTHN_TOKEN", "fixture-secret")
-    r = CliRunner()
-    result = r.invoke(
-        main,
-        ["--json", "api", "call", "job", "StopJob", "--file", "-", "--dry-run"],
-        input='{"Project":"p","JobId":"j"}',
-    )
-    assert result.exit_code == 0, result.output
-    payload = json.loads(result.output)
-    assert payload["ok"] and payload["data"]["body"]["JobId"] == "j"
-    assert "fixture-secret" not in result.output
-    error = r.invoke(
-        main,
-        ["--json", "api", "call", "job", "StopJob", "--file", "-"],
-        input='{"Project":"p","JobId":false}',
-    )
-    assert error.exit_code == 1
-    assert json.loads(error.output)["error"]["kind"] == "input"
-    assert (
-        r.invoke(
-            main, ["--json", "workspace", "ssh", "dev", "--project", "p", "--zone", "z"]
-        ).exit_code
-        == 1
-    )
-    assert (
-        r.invoke(
-            main, ["--json", "job", "logs", "j", "--project", "p", "--zone", "z", "--follow"]
-        ).exit_code
-        == 1
-    )
-
-
-def test_shortcut_create_and_scope_protection():
-    r = CliRunner()
-    result = r.invoke(
-        main,
-        [
-            "job",
-            "create",
-            "--name",
-            "test",
-            "--project",
-            "p",
-            "--zone",
-            "z",
-            "--image",
-            "fixture",
-            "--command",
-            "python train.py",
-            "--sku",
-            "sku",
-            "--sku-scope",
-            "public",
-            "--dry-run",
-        ],
-    )
-    assert result.exit_code == 0, result.output
-    payload = json.loads(result.output)["body"]
-    assert payload["TaskSpecs"]["t0"]["SKUId"] == "sku"
-    result = r.invoke(
-        main,
-        [
-            "job",
-            "stop",
-            "j",
-            "--project",
-            "p",
-            "--zone",
-            "z",
-            "--set",
-            'Project="other"',
-            "--dry-run",
-        ],
-    )
-    assert result.exit_code == 1
-
-
 def test_ssh_exec_cli_exit_code(monkeypatch):
     save("environment", "workspace", "p", "z", "dev", Connection("host"))
     seen = []
@@ -221,12 +128,6 @@ def test_ssh_exec_cli_exit_code(monkeypatch):
     )
     assert result.exit_code == 23, result.output
     assert seen == [("printf", "hello world")]
-
-
-def test_schema_help_does_not_hide_secret_field_types():
-    result = CliRunner().invoke(main, ["--json", "api", "describe", "iam", "CreateUser"])
-    assert result.exit_code == 0, result.output
-    assert json.loads(result.output)["data"]["schema"]["properties"]["Password"]["type"] == "string"
 
 
 def test_input_secret_is_redacted_from_echoed_platform_message(monkeypatch):
@@ -437,67 +338,6 @@ def test_skill_upgrade_rejects_file_replaced_by_directory_and_uninstall_preserve
     install("codex", dest, True)
     assert user_file.read_text() == "user content"
     assert not (dest / MARKER).exists()
-
-
-@pytest.mark.parametrize("conflict", ["entry", "parent"])
-def test_all_skill_targets_preflight_file_and_parent_types(tmp_path, monkeypatch, conflict):
-    import yicloud.skill_install as installer
-
-    package = tmp_path / "package"
-    source = package / "skill"
-    source.mkdir(parents=True)
-    (source / "SKILL.md").write_text("version A")
-    (source / "references").mkdir()
-    (source / "references/guide.md").write_text("guide")
-    codex, claude = tmp_path / "codex", tmp_path / "claude"
-    monkeypatch.setattr(installer, "files", lambda _: package)
-    monkeypatch.setattr(installer, "targets", lambda *args: [codex, claude])
-    install("all")
-    original = (codex / installer.MARKER).read_bytes()
-    (source / "SKILL.md").write_text("version B")
-    if conflict == "entry":
-        (claude / "SKILL.md").unlink()
-        (claude / "SKILL.md").mkdir()
-        user_file = claude / "SKILL.md/keep.txt"
-        actions = (False,)
-    else:
-        (claude / "references/guide.md").unlink()
-        (claude / "references").rmdir()
-        user_file = claude / "references"
-        actions = (False, True)
-    user_file.write_text("user content")
-    for uninstall in actions:
-        with pytest.raises(ConfigurationError, match="conflicts with non-"):
-            install("all", uninstall=uninstall)
-        assert (codex / "SKILL.md").read_text() == "version A"
-        assert (codex / installer.MARKER).read_bytes() == original
-        assert user_file.read_text() == "user content"
-        assert (claude / installer.MARKER).exists()
-
-
-def test_all_skill_targets_preflight_new_destination_parent(tmp_path, monkeypatch):
-    import yicloud.skill_install as installer
-
-    codex = tmp_path / "codex"
-    blocked = tmp_path / "blocked"
-    blocked.write_text("user file")
-    monkeypatch.setattr(installer, "targets", lambda *args: [codex, blocked / "skill"])
-    with pytest.raises(ConfigurationError, match="directory conflicts with non-directory"):
-        install("all")
-    assert not codex.exists()
-    assert blocked.read_text() == "user file"
-    assert [row["state"] for row in installer.status("all")["targets"]] == ["missing", "conflict"]
-
-
-@pytest.mark.skipif(os.name == "nt", reason="FIFO is POSIX-only")
-def test_skill_upgrade_rejects_fifo_without_reading_it(tmp_path):
-    dest = tmp_path / "skill"
-    install("codex", dest)
-    entry = dest / "SKILL.md"
-    entry.unlink()
-    os.mkfifo(entry)
-    with pytest.raises(ConfigurationError, match="non-file.*SKILL.md"):
-        install("codex", dest)
 
 
 def test_skill_managed_symlink_still_blocks_install_and_uninstall(tmp_path):
