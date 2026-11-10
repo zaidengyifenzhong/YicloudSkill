@@ -2,7 +2,7 @@
 
 ## Overview
 
-YicloudSkill 通过标准 Agent Skills 为支持该格式的 Agent 提供操作[仪电智算云](https://api.yicloud.com.cn/)的 Agent Skill，同时提供独立的 Python SDK 和 `yicloud` CLI。CLI、SDK、内置 Skill 从同一 GitHub 仓库分发；默认安装和更新跟踪 `main`，每次更新固定到检查到的完整提交 SHA。
+YicloudSkill 通过标准 Agent Skills 为支持该格式的 Agent 提供操作[仪电智算云](https://api.yicloud.com.cn/)的 Agent Skill，同时提供独立的 Python SDK 和 `yicloud` CLI。CLI、SDK、内置 Skill 从同一 GitHub 仓库分发。
 
 ## Features
 
@@ -42,7 +42,9 @@ Windows PowerShell：
 .\install.ps1 -Manager venv
 ```
 
-脚本默认从官方 GitHub `main` 安装 CLI，**自动检测本机已有 Agent，只为检测到的 Agent 安装 Skill**。没有检测到 Agent 时只安装 CLI，并显示后续选择方式，不创建任何 Agent 目录。脚本会验证 CLI、Skill 和 `doctor local`；失败返回非零退出码。
+脚本默认安装**脚本所在的本地 checkout**，不会再次从 GitHub 拉取源码；依赖和构建工具仍可能需要下载。从其他工作目录运行脚本也使用同一份源码。脚本**自动检测本机已有 Agent，只为检测到的 Agent 安装 Skill**。没有检测到 Agent 时只安装 CLI，并显示后续选择方式，不创建任何 Agent 目录。脚本会验证 CLI、Skill 和 `doctor local`；失败返回非零退出码。
+
+可用 `--source SOURCE` / `-Source SOURCE` 显式安装其他目录、wheel 或 Git 来源，例如 `bash install.sh --source 'git+https://github.com/zaidengyifenzhong/YicloudSkill.git@main'`。
 
 `auto` 优先复用 `~/.local/share/yicloud-skill/venv`，否则选择已有 uv、pipx，均不存在时创建该独立 venv。POSIX 需要 `python3`，Windows 需要 PATH 中的 `python`；部分 Linux 发行版需通过系统包管理器提供 venv 支持。可用 `--venv PATH` / `-Venv PATH` 指定环境，`--target none` / `-Target none` 只安装 CLI。
 
@@ -109,6 +111,10 @@ yicloud resources zones
 Token、服务账号及环境变量见[认证说明](src/yicloud/skill/references/access.md)。在已安装 Skill 的 Agent 中提出目标，例如“使用 yicloud，列出当前账号项目和可用 GPU 规格”。创建、停止或删除资源前应确认资源范围。
 
 ## Updating
+
+通过脚本安装本地 checkout 后，在该仓库运行 `git pull --ff-only`，再运行 `bash install.sh`（Windows 为 `.\install.ps1`），安装更新后的 CLI 和 Skill。
+
+从官方 Git 来源安装（上述显式 `--source` 或直接 uv/pipx 安装）的用户可使用自动更新：
 
 ```sh
 yicloud update --check

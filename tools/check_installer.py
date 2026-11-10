@@ -72,8 +72,6 @@ with tempfile.TemporaryDirectory(prefix="yicloud-installer-") as directory:
             args.manager,
             "-Target",
             "auto",
-            "-Source",
-            str(args.wheel.resolve()),
         ]
     else:
         command = [
@@ -83,11 +81,16 @@ with tempfile.TemporaryDirectory(prefix="yicloud-installer-") as directory:
             args.manager,
             "--target",
             "auto",
-            "--source",
-            str(args.wheel.resolve()),
         ]
     if args.manager == "venv":
         command += ["-Venv" if os.name == "nt" else "--venv", str(scratch / "venv")]
+    subprocess.run(
+        command + ["-Source" if os.name == "nt" else "--source", str(args.wheel.resolve())],
+        env=env,
+        cwd=scratch,
+        check=True,
+    )
+    # Default installation uses the checkout even when invoked from another directory.
     subprocess.run(command, env=env, cwd=scratch, check=True)
     assert (scratch / "codex/skills/yicloud/SKILL.md").is_file()
     assert (scratch / ".cursor/skills/yicloud/SKILL.md").is_file()

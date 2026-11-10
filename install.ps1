@@ -3,7 +3,7 @@
 param(
     [ValidateSet('auto','uv','pipx','venv')][string]$Manager = 'auto',
     [ValidatePattern('^[a-z][a-z0-9-]*$')][string]$Target = 'auto',
-    [string]$Source = 'git+https://github.com/zaidengyifenzhong/YicloudSkill.git@main',
+    [string]$Source = $PSScriptRoot,
     [string]$Venv = (Join-Path $HOME '.local/share/yicloud-skill/venv')
 )
 $ErrorActionPreference = 'Stop'

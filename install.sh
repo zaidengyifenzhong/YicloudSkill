@@ -3,7 +3,7 @@
 set -euo pipefail
 manager=auto
 target=auto
-source_spec='git+https://github.com/zaidengyifenzhong/YicloudSkill.git@main'
+source_spec="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 venv_dir="${HOME}/.local/share/yicloud-skill/venv"
 while (($#)); do
   case "$1" in
@@ -11,7 +11,7 @@ while (($#)); do
       [[ $# -ge 2 ]] || { echo "Missing value for $1" >&2; exit 2; }
       case "$1" in --manager) manager=$2 ;; --target) target=$2 ;; --source) source_spec=$2 ;; --venv) venv_dir=$2 ;; esac
       shift 2 ;;
-    --help|-h) echo 'install.sh [--manager auto|uv|pipx|venv] [--target auto|AGENT|all|none] [--source PACKAGE_OR_WHEEL] [--venv PATH]'; exit 0 ;;
+    --help|-h) echo 'install.sh [--manager auto|uv|pipx|venv] [--target auto|AGENT|all|none] [--source SOURCE] [--venv PATH] (default source: local checkout)'; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
 done
