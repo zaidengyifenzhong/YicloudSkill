@@ -210,7 +210,7 @@ def verify(wheel, wheelhouse, manager):
         assert data["data"]["commit"] == after and data["data"]["version"] == version
         assert len(data["data"]["skills"]) == 2
         assert all(row["state"] == "matching" for row in data["data"]["skills"])
-        assert "Initial fixture commit" not in skill.read_text()
+        assert b"Initial fixture commit" not in skill.read_bytes()
         assert (root / "config.json").read_bytes() == config_bytes
         assert not (root / ".claude").exists()
         fixture_provenance(after)
