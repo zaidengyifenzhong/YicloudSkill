@@ -8,6 +8,7 @@ YicloudSkill 通过标准 Agent Skills 为支持该格式的 Agent 提供操作[
 
 - 查询项目、可用区、镜像、存储及计算规格。
 - 管理开发机、训练 Job，检查任务状态、日志及产物。
+- 在开发机内使用平台自带工具：[rjobv3 提交和管理训练](src/yicloud/skill/references/jobs/rjobv3.md)，[rlaunch 启动调试 Worker](src/yicloud/skill/references/workspace/rlaunch.md)。
 - 通过 SSH/SFTP/SCP 执行远程命令和传输文件。
 - 提供 Ray、模型部署等接口及本地请求校验；实际联测范围见下文。
 - 管理本地账号和工作上下文，检查安装状态，统一更新 CLI 与已有 Skill。

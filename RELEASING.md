@@ -21,7 +21,7 @@ python tools/check_catalog.py
 python tools/validate_skill.py
 python tools/evaluate_skill.py
 python -m build
-python tools/check_release.py --tag v0.4.0
+python tools/check_release.py --tag v0.4.1
 python -m twine check dist/*
 ```
 
@@ -30,7 +30,7 @@ python -m twine check dist/*
 真实管理器的受控安装与更新检查需要 Git、uv、pipx，以及预先下载的运行/构建依赖：
 
 ```sh
-python -m pip download --dest wheelhouse dist/yicloud_skill-0.4.0-py3-none-any.whl 'setuptools>=77' pip
+python -m pip download --dest wheelhouse dist/yicloud_skill-0.4.1-py3-none-any.whl 'setuptools>=77' pip
 python tools/verify_wheel.py dist --wheelhouse wheelhouse
 python tools/check_installer.py dist --wheelhouse wheelhouse --manager uv
 python tools/check_installer.py dist --wheelhouse wheelhouse --manager pipx
@@ -43,8 +43,8 @@ python tools/check_updater.py dist --wheelhouse wheelhouse
 通过审核并获得维护者发布授权后，可创建快照：
 
 ```sh
-git tag -a v0.4.0 -m 'Release 0.4.0'
-git push origin v0.4.0
+git tag -a v0.4.1 -m 'Release 0.4.1'
+git push origin v0.4.1
 ```
 
 这些是维护者操作说明，普通代码推送不会创建 tag 或 Release。

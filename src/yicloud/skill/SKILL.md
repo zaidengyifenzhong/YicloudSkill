@@ -1,6 +1,6 @@
 ---
 name: yicloud
-description: 使用 yicloud CLI 查询和管理仪电智算云的开发机、训练、镜像仓库、Ray、模型部署与存储，并完成 SSH 操作和任务排错。
+description: 使用 yicloud CLI 查询和管理仪电智算云资源，执行 SSH 操作和任务排错，以及使用官方 rjobv3 提交训练、使用 rlaunch 调试开发机 Worker。
 ---
 
 # Yicloud 平台操作
@@ -16,6 +16,8 @@ description: 使用 yicloud CLI 查询和管理仪电智算云的开发机、训
 | 查询现有开发机和 Job 及其状态 | `yicloud workspace list` / `yicloud job list`；单项用 `status` | [查询已有资源](references/query.md) |
 | 创建开发机 | `yicloud workspace create` | [开发机创建](references/workspace/create.md) |
 | 创建 Job | `yicloud job create` | [训练执行](references/jobs/run.md) |
+| 使用官方 CLI 提交或管理自定义训练任务 | `rjobv3`（开发机内） | [官方训练 CLI](references/jobs/rjobv3.md) |
+| 在已有开发机上启动临时调试 Worker | `rlaunch`（开发机内） | [开发机 Worker 调试](references/workspace/rlaunch.md) |
 | 连接开发机 | `yicloud workspace ssh` | [连接与远程操作](references/workspace/connect.md) |
 | 连接 Job 实例（普通用户 / root） | `yicloud job ssh`；未登记时按已核实控制台协议生成连接 | [连接与远程操作](references/workspace/connect.md) |
 | 查询镜像仓库和版本 | `yicloud registry list-public-repositories` / `list-custom-repositories` | [镜像查询](references/images/query.md) |
@@ -51,7 +53,7 @@ description: 使用 yicloud CLI 查询和管理仪电智算云的开发机、训
 
 - 需要核对平台流程、限制或权限时，优先查阅用户指定的[最新飞书文档索引](https://iqeubg8au73.feishu.cn/wiki/BG9Bwc6RliG4DbkIu2OckJKZnxh)及对应章节；CLI 参数以当前子命令帮助为准。本地 schema 接受某值不证明平台支持该业务操作；文档与接口不一致时先核实，不用写请求试探。无法读取最新说明时明确未核实。
 - 先按目标定位命令，再补齐其必要参数；缺资源信息时用对应只读查询，不用不完整的写请求试错。已知语法直接使用，不确定时只读该子命令的 `--help`。复杂请求查询 `api describe SERVICE ACTION`，它描述固定 SDK 的请求结构，不是实时服务端能力或响应合同。不要为单项任务加载全部接口目录。
-- `--json`、`--account`、`--context` 等全局选项放在子命令前。优先从当前 context、用户输入、已核实资源或查询结果取得参数；只补问真正缺少的信息，不猜镜像、路径、规格或拓扑。
+- `yicloud` 的 `--json`、`--account`、`--context` 等全局选项放在子命令前。优先从当前 context、用户输入、已核实资源或查询结果取得参数；只补问真正缺少的信息，不猜镜像、路径、规格或拓扑。`rjobv3` 和 `rlaunch` 各自使用开发机内的配置，按对应手册核对参数和 API 网关。
 - SSH 先查连接缓存；没有记录时，按[连接手册](references/workspace/connect.md)查询实例并生成普通用户 / root 的完整命令，先用 `connection set` 按实例和身份分别缓存，再连接。后续复用缓存，实例更换时刷新；不要把未登记直接当作需要用户提供 SSH 命令。
 - 文中的 `$变量` 是调用形式说明：必须先取得真实值并赋值才执行；代码块不是待逐行执行的脚本。无需参数的命令直接使用。完整请求用 `--file`，生命周期附加字段用 `--extra-file`。
 - 显示名称使用命令支持的 `--by-name`；把分页、名称消歧、字段转换交给 CLI。零匹配或多匹配时不写入。通用 API 不提供全部工作流保护，使用前阅读其手册。

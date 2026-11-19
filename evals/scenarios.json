@@ -27,6 +27,18 @@
       "criteria": ["选择 jobs/run.md 及 storage.md", "保留用户框架与资源选择", "验证终态、实际输出内容及后续读取"]
     },
     {
+      "id": "rjobv3-preview-only",
+      "kind": "positive",
+      "request": "在现有仪电开发机上用 rjobv3 预览我给出的双角色训练，先不要提交。",
+      "criteria": ["选择 jobs/rjobv3.md", "使用本地 dry-run", "核对公共镜像和各角色命令、资源与副本", "不要求线上凭据或创建任务"]
+    },
+    {
+      "id": "rlaunch-workspace-worker",
+      "kind": "positive",
+      "request": "在我现有的仪电开发机挂一个后台单副本 Worker，用来短时 SSH 调试。",
+      "criteria": ["选择 workspace/rlaunch.md", "核对网关、资源组和 SSH 条件", "使用单副本 detach", "记录 Worker 名称并说明开发机停止会影响它"]
+    },
+    {
       "id": "account-conflict",
       "kind": "boundary",
       "request": "仪电当前 context 与 --account 冲突怎么办？",
